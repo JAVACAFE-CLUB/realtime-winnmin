@@ -1,0 +1,73 @@
+### 뉴스 API 테스트
+
+### 🌐 Base URL 설정
+@baseUrl = http://localhost:8080
+@contentType = application/json
+# 위의 POST 요청 결과에서 받은 실제 UUID를 여기에 설정하세요
+@newsId = a73e1388-2772-40e9-9459-fc459d3cd8e9
+
+### 1. 뉴스 생성 (POST /api/news)
+POST {{baseUrl}}/api/news
+Content-Type: {{contentType}}
+
+{
+  "title": "삼성전자, 2024년 4분기 실적 발표",
+  "content": "삼성전자가 2024년 4분기 매출 76조원을 기록하며 전년 동기 대비 15% 증가했다고 발표했습니다. 메모리 반도체 수요 회복이 주요 성장 동력으로 작용했습니다.",
+  "source": "manual",
+  "url": "https://example.com/samsung-q4-2024",
+  "category": "경제"
+}
+
+### 2. 또 다른 뉴스 생성 (기술 카테고리)
+POST {{baseUrl}}/api/news
+Content-Type: {{contentType}}
+
+{
+  "title": "ChatGPT, 새로운 업데이트로 한국어 성능 대폭 향상",
+  "content": "OpenAI가 ChatGPT의 최신 업데이트를 통해 한국어 이해도와 생성 품질을 크게 개선했다고 발표했습니다. 특히 한국 문화와 맥락을 고려한 응답이 가능해졌습니다.",
+  "source": "manual",
+  "url": "https://example.com/chatgpt-korean-update",
+  "category": "기술"
+}
+
+### 3. 스포츠 뉴스 생성
+POST {{baseUrl}}/api/news
+Content-Type: {{contentType}}
+
+{
+  "title": "손흥민, 토트넘에서 시즌 20골 달성",
+  "content": "손흥민이 프리미어리그에서 시즌 20골을 달성하며 개인 통산 100골에 근접했습니다. 이번 시즌 EPL 득점왕 경쟁에서도 상위권을 유지하고 있습니다.",
+  "source": "manual", 
+  "url": "https://example.com/son-20goals",
+  "category": "스포츠"
+}
+
+### 4. 뉴스 검색 - 삼성 키워드
+GET {{baseUrl}}/api/news/search?keyword=삼성&size=10
+Accept: {{contentType}}
+
+### 5. 뉴스 검색 - ChatGPT 키워드
+GET {{baseUrl}}/api/news/search?keyword=ChatGPT&size=5
+Accept: {{contentType}}
+
+### 6. 뉴스 검색 - 손흥민 키워드
+GET {{baseUrl}}/api/news/search?keyword=손흥민&size=10
+Accept: {{contentType}}
+
+### 7. 뉴스 검색 - 모든 뉴스 (빈 키워드는 지원하지 않으므로 일반 검색어 사용)
+GET {{baseUrl}}/api/news/search?keyword=2024&size=20
+Accept: {{contentType}}
+
+### 8. 특정 소스로 뉴스 검색
+GET {{baseUrl}}/api/news/search?keyword=기술&source=manual&size=10
+Accept: {{contentType}}
+
+### 9. 뉴스 삭제 (DELETE /api/news/{id})
+# 먼저 위에서 생성된 뉴스의 ID를 복사해서 사용하세요
+DELETE {{baseUrl}}/api/news/{{newsId}}
+Accept: {{contentType}}
+
+### 10. 존재하지 않는 뉴스 삭제 시도
+DELETE {{baseUrl}}/api/news/non-existent-id
+Accept: {{contentType}}
+
