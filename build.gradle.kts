@@ -32,6 +32,9 @@ dependencies {
     // 📊 모니터링 & 운영
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     
+    // 🔍 Elasticsearch (Spring Boot 3.5.3 호환 버전)
+    implementation("org.springframework.boot:spring-boot-starter-data-elasticsearch")
+    
     // 🔧 Kotlin 지원
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
