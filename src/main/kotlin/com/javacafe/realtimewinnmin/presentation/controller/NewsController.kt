@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.*
 class NewsController(
     private val newsService: NewsService
 ) {
-    private val logger = LoggerFactory.getLogger(NewsController::class.java)
+      private val logger = KotlinLogging.logger { }
 
     /**
      * 뉴스 기사 검색
