@@ -8,7 +8,7 @@ import com.javacafe.realtimewinnmin.application.service.NewsService
 import com.javacafe.realtimewinnmin.common.dto.ApiResponse
 import com.javacafe.realtimewinnmin.common.exception.ExceptionCode
 import com.javacafe.realtimewinnmin.common.exception.GlobalException
-import org.slf4j.LoggerFactory
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.*
 class NewsController(
     private val newsService: NewsService
 ) {
-      private val logger = KotlinLogging.logger { }
+    private val logger = KotlinLogging.logger { }
 
     /**
      * 뉴스 기사 검색
@@ -29,7 +29,7 @@ class NewsController(
         @RequestParam(defaultValue = "manual") source: String = "manual",
         @RequestParam(defaultValue = "10") size: Int = 10
     ): ResponseEntity<ApiResponse<NewsListResponse>> {
-        logger.info("GET /api/news/search - Searching news with keyword: $keyword")
+        logger.info { "GET /api/news/search - Searching news with keyword: $keyword" }
 
         return runCatching {
             val searchRequest = NewsSearchRequest(
@@ -41,7 +41,7 @@ class NewsController(
             newsService.searchNews(searchRequest)
         }.fold(
             onSuccess = { searchResults ->
-                logger.info("Successfully found ${searchResults.news.size} news articles for keyword: $keyword")
+                logger.info { "Successfully found ${searchResults.news.size} news articles for keyword: $keyword" }
 
                 ResponseEntity.ok(
                     ApiResponse.success(
@@ -51,7 +51,7 @@ class NewsController(
                 )
             },
             onFailure = { exception ->
-                logger.error("Error searching news with keyword: $keyword")
+                logger.error { "Error searching news with keyword: $keyword" }
                 throw GlobalException(
                     ExceptionCode.INTERNAL_SERVER_ERROR,
                     "뉴스 검색 중 오류가 발생했습니다. ${exception.message}"
@@ -66,13 +66,13 @@ class NewsController(
      */
     @PostMapping
     fun createNews(@RequestBody request: NewsCreateRequest): ResponseEntity<ApiResponse<NewsResponse>> {
-        logger.info("POST /api/news - Creating news: ${request.title}")
+        logger.info { "POST /api/news - Creating news: ${request.title}" }
 
         return runCatching {
             newsService.createNews(request)
         }.fold(
             onSuccess = { newsResponse ->
-                logger.info("Successfully created news with UUID: ${newsResponse.id}")
+                logger.info { "Successfully created news with UUID: ${newsResponse.id}" }
                 ResponseEntity.ok(
                     ApiResponse.success(
                         data = newsResponse,
@@ -81,7 +81,7 @@ class NewsController(
                 )
             },
             onFailure = { exception ->
-                logger.error("Error creating news: ${request.title}", exception)
+                logger.error(exception) { "Error creating news: ${request.title}" }
                 throw GlobalException(ExceptionCode.INTERNAL_SERVER_ERROR, "뉴스 기사 저장 중 오류가 발생했습니다. $exception.message")
             }
         )
@@ -93,7 +93,7 @@ class NewsController(
      */
     @DeleteMapping("/{id}")
     fun deleteNews(@PathVariable id: String): ResponseEntity<ApiResponse<Boolean>> {
-        logger.info("DELETE /api/news/$id - Deleting news article")
+        logger.info { "DELETE /api/news/$id - Deleting news article" }
 
         return runCatching {
             newsService.deleteNews(id)
@@ -105,11 +105,11 @@ class NewsController(
                     "삭제할 뉴스 기사를 찾을 수 없습니다." to "News article not found for deletion: $id"
                 }
 
-                logger.info(logMessage)
+                logger.info { logMessage }
                 ResponseEntity.ok(ApiResponse.success(data = deleted, message = message))
             },
             onFailure = { exception ->
-                logger.error("Error deleting news article: $id", exception)
+                logger.error(exception) { "Error deleting news article: $id" }
                 throw GlobalException(
                      ExceptionCode.INTERNAL_SERVER_ERROR,
                     "뉴스 기사 삭제 중 오류가 발생했습니다. ${exception.message}"

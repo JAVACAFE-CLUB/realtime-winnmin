@@ -38,7 +38,8 @@ dependencies {
     // 🔧 Kotlin 지원
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
-    
+    implementation("io.github.oshai:kotlin-logging-jvm:7.0.3")
+
     // ⚙️ 개발 도구
     developmentOnly("org.springframework.boot:spring-boot-devtools")
     annotationProcessor("org.springframework.boot:spring-boot-configuration-processor")
