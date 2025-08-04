@@ -1,21 +1,22 @@
 package com.javacafe.realtimewinnmin.common.exception
 
 import com.javacafe.realtimewinnmin.common.dto.ApiResponse
-import org.slf4j.LoggerFactory
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
-    private val logger = LoggerFactory.getLogger(GlobalExceptionHandler::class.java)
+    private val logger = KotlinLogging.logger { }
+
 
     @ExceptionHandler(GlobalException::class)
-    protected fun <T> handleGlobalException(e: GlobalException): ResponseEntity<ApiResponse<T>> {
-        val response = ApiResponse.error<T>(
+    protected fun handleGlobalException(e: GlobalException): ResponseEntity<ApiResponse<Nothing>> {
+        logger.error(e) { "[GlobalException] e : ${e.message} " }
+        val response = ApiResponse.error(
             message = e.message ?: "Global Exception",
         )
         return ResponseEntity(response, e.exceptionCode.httpStatus)
     }
-
 }
