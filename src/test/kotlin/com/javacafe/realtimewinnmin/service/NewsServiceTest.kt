@@ -30,53 +30,126 @@ class NewsServiceTest {
     
     @InjectMocks
     private lateinit var newsService: NewsService
-    
+
     @Test
-    fun `searchNews 성공 - 키워드로 뉴스를 찾아서 결과 반환`() {
+    fun `searchNewsWithLimit 성공 - 키워드로 뉴스를 찾아서 결과 반환`() {
         // given
         val searchRequest = NewsSearchRequest(
             keyword = "삼성",
             size = 10
         )
-        
+
         val mockNewsArticle = NewsArticle(
             title = "삼성전자 실적 발표",
             content = "삼성전자가 좋은 실적을 발표했습니다",
             source = "manual"
         )
-        
-        whenever(newsRepository.searchByKeyword(eq("삼성"), any<Pageable>()))
+
+        whenever(newsRepository.findTopByKeywordOrderByCreatedAtDesc(eq("삼성"), eq(10)))
             .thenReturn(listOf(mockNewsArticle))
-        
+
         // when
-        val result = newsService.searchNews(searchRequest)
-        
+        val result = newsService.searchNewsWithLimit(searchRequest)
+
         // then
-        assertEquals(1, result.news.size)
-        assertEquals(1, result.totalCount)
-        assertFalse(result.hasNext)
-        assertEquals("삼성전자 실적 발표", result.news[0].title)
-        
-        verify(newsRepository, times(1)).searchByKeyword(eq("삼성"), any<Pageable>())
+        assertEquals(1, result.size)
+        assertEquals("삼성전자 실적 발표", result[0].title)
+        assertEquals("삼성전자가 좋은 실적을 발표했습니다", result[0].content)
+        assertEquals("manual", result[0].source)
+
+        verify(newsRepository, times(1)).findTopByKeywordOrderByCreatedAtDesc(eq("삼성"), eq(10))
     }
-    
+
     @Test
-    fun `searchNews 실패 - Repository에서 예외 발생 시 전파`() {
+    fun `searchNewsWithLimit 성공 - 빈 결과 반환`() {
+        // given
+        val searchRequest = NewsSearchRequest(
+            keyword = "존재하지않는키워드",
+            size = 10
+        )
+
+        whenever(newsRepository.findTopByKeywordOrderByCreatedAtDesc(eq("존재하지않는키워드"), eq(10)))
+            .thenReturn(emptyList())
+
+        // when
+        val result = newsService.searchNewsWithLimit(searchRequest)
+
+        // then
+        assertTrue(result.isEmpty())
+
+        verify(newsRepository, times(1)).findTopByKeywordOrderByCreatedAtDesc(eq("존재하지않는키워드"), eq(10))
+    }
+
+    @Test
+    fun `searchNewsWithLimit 성공 - 여러 뉴스 결과 반환`() {
+        // given
+        val searchRequest = NewsSearchRequest(
+            keyword = "삼성",
+            size = 5
+        )
+
+        val mockNewsArticles = listOf(
+            NewsArticle(
+                title = "삼성전자 실적 발표",
+                content = "삼성전자가 좋은 실적을 발표했습니다",
+                source = "manual"
+            ),
+            NewsArticle(
+                title = "삼성 신제품 출시",
+                content = "삼성에서 새로운 제품을 출시했습니다",
+                source = "auto"
+            )
+        )
+
+        whenever(newsRepository.findTopByKeywordOrderByCreatedAtDesc(eq("삼성"), eq(5)))
+            .thenReturn(mockNewsArticles)
+
+        // when
+        val result = newsService.searchNewsWithLimit(searchRequest)
+
+        // then
+        assertEquals(2, result.size)
+        assertEquals("삼성전자 실적 발표", result[0].title)
+        assertEquals("삼성 신제품 출시", result[1].title)
+
+        verify(newsRepository, times(1)).findTopByKeywordOrderByCreatedAtDesc(eq("삼성"), eq(5))
+    }
+
+    @Test
+    fun `searchNewsWithLimit 실패 - Repository에서 예외 발생 시 전파`() {
         // given
         val searchRequest = NewsSearchRequest(
             keyword = "삼성",
             size = 10
         )
-        
-        whenever(newsRepository.searchByKeyword(eq("삼성"), any<Pageable>()))
+
+        whenever(newsRepository.findTopByKeywordOrderByCreatedAtDesc(eq("삼성"), eq(10)))
             .thenThrow(RuntimeException("Repository error"))
-        
+
         // when & then
         assertFailsWith<RuntimeException> {
-            newsService.searchNews(searchRequest)
+            newsService.searchNewsWithLimit(searchRequest)
         }
-        
-        verify(newsRepository, times(1)).searchByKeyword(eq("삼성"), any<Pageable>())
+
+        verify(newsRepository, times(1)).findTopByKeywordOrderByCreatedAtDesc(eq("삼성"), eq(10))
+    }
+
+    @Test
+    fun `searchNewsWithLimit 성공 - size 파라미터 정확히 전달`() {
+        // given
+        val searchRequest = NewsSearchRequest(
+            keyword = "테스트",
+            size = 20
+        )
+
+        whenever(newsRepository.findTopByKeywordOrderByCreatedAtDesc(eq("테스트"), eq(20)))
+            .thenReturn(emptyList())
+
+        // when
+        newsService.searchNewsWithLimit(searchRequest)
+
+        // then
+        verify(newsRepository, times(1)).findTopByKeywordOrderByCreatedAtDesc(eq("테스트"), eq(20))
     }
     
     @Test

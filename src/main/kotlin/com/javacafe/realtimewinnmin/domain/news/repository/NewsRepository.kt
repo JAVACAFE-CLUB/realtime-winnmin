@@ -1,7 +1,6 @@
 package com.javacafe.realtimewinnmin.domain.news.repository
 
 import com.javacafe.realtimewinnmin.domain.news.entity.NewsArticle
-import org.springframework.data.domain.Pageable
 import org.springframework.data.elasticsearch.annotations.Query
 import org.springframework.data.elasticsearch.repository.ElasticsearchRepository
 import org.springframework.stereotype.Repository
@@ -13,14 +12,18 @@ interface NewsRepository : ElasticsearchRepository<NewsArticle, String> {
      */
     @Query("""
         {
-            "bool": {
-                "should": [
-                    {"match": {"title": "?0"}},
-                    {"match": {"content": "?0"}}
-                ],
-                "minimum_should_match": 1
-            }
+            "size": ?1,
+            "query": {
+                "bool": {
+                    "should": [
+                        {"match": {"title": "?0"}},
+                        {"match": {"content": "?0"}}
+                    ],
+                    "minimum_should_match": 1
+                }
+            },
+            "sort": [{"createdAt": {"order": "desc"}}]
         }
     """)
-    fun searchByKeyword(keyword: String, pageable: Pageable): List<NewsArticle>
+    fun findTopByKeywordOrderByCreatedAtDesc(keyword: String, limit: Int): List<NewsArticle>
 }

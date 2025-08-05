@@ -52,9 +52,3 @@ data class NewsSearchRequest(
     val endDate: LocalDateTime? = null,
     val size: Int = 10
 )
-
-data class NewsListResponse(
-    val news: List<NewsResponse>,
-    val totalCount: Long,
-    val hasNext: Boolean
-)

@@ -16,23 +16,17 @@ class NewsService(
     /**
      * 키워드로 뉴스 검색
      */
-    fun searchNews(request: NewsSearchRequest): NewsListResponse {
-        logger.info { "Searching news with keyword: ${request.keyword}" }
+    fun searchNewsWithLimit(request: NewsSearchRequest): List<NewsResponse> {
+        logger.info { "Searching top ${request.size} news with keyword: ${request.keyword}" }
 
-        val pageable = PageRequest.of(
-            0,
-            request.size,
-            Sort.by(Sort.Direction.DESC, "createdAt")
+        val searchResults = newsRepository.findTopByKeywordOrderByCreatedAtDesc(
+            keyword = request.keyword,
+            limit = request.size
         )
-        val searchResults = newsRepository.searchByKeyword(request.keyword, pageable)
 
         logger.info { "Found ${searchResults.size} news articles for keyword: ${request.keyword}" }
 
-        return NewsListResponse(
-            news = searchResults.map(NewsResponse::from),
-            totalCount = searchResults.size.toLong(),
-            hasNext = searchResults.size >= request.size
-        )
+        return searchResults.map(NewsResponse::from)
     }
 
     /**

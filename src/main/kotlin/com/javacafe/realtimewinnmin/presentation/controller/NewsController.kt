@@ -1,7 +1,6 @@
 package com.javacafe.realtimewinnmin.presentation.controller
 
 import com.javacafe.realtimewinnmin.application.dto.NewsCreateRequest
-import com.javacafe.realtimewinnmin.application.dto.NewsListResponse
 import com.javacafe.realtimewinnmin.application.dto.NewsResponse
 import com.javacafe.realtimewinnmin.application.dto.NewsSearchRequest
 import com.javacafe.realtimewinnmin.application.service.NewsService
@@ -28,7 +27,7 @@ class NewsController(
         @RequestParam keyword: String,
         @RequestParam(defaultValue = "manual") source: String = "manual",
         @RequestParam(defaultValue = "10") size: Int = 10
-    ): ResponseEntity<ApiResponse<NewsListResponse>> {
+    ): ResponseEntity<ApiResponse<List<NewsResponse>>> {
         logger.info { "GET /api/news/search - Searching news with keyword: $keyword" }
 
         return runCatching {
@@ -38,15 +37,15 @@ class NewsController(
                 size = size
             )
 
-            newsService.searchNews(searchRequest)
+            newsService.searchNewsWithLimit(searchRequest)
         }.fold(
             onSuccess = { searchResults ->
-                logger.info { "Successfully found ${searchResults.news.size} news articles for keyword: $keyword" }
+                logger.info { "Successfully found ${searchResults.size} news articles for keyword: $keyword" }
 
                 ResponseEntity.ok(
                     ApiResponse.success(
                         data = searchResults,
-                        message = "키워드 '$keyword'로 ${searchResults.news.size}개의 뉴스를 찾았습니다."
+                        message = "키워드 '$keyword'로 ${searchResults.size}개의 뉴스를 찾았습니다."
                     )
                 )
             },
