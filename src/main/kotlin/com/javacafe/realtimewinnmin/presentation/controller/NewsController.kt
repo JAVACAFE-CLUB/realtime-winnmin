@@ -5,8 +5,6 @@ import com.javacafe.realtimewinnmin.application.dto.NewsResponse
 import com.javacafe.realtimewinnmin.application.dto.NewsSearchRequest
 import com.javacafe.realtimewinnmin.application.service.NewsService
 import com.javacafe.realtimewinnmin.common.dto.ApiResponse
-import com.javacafe.realtimewinnmin.common.exception.ExceptionCode
-import com.javacafe.realtimewinnmin.common.exception.GlobalException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -18,102 +16,55 @@ class NewsController(
 ) {
     private val logger = KotlinLogging.logger { }
 
-    /**
-     * 뉴스 기사 검색
-     * GET /api/news/search?keyword=삼성전자&size=10
-     */
     @GetMapping("/search")
     fun searchNews(
         @RequestParam keyword: String,
         @RequestParam(defaultValue = "manual") source: String = "manual",
         @RequestParam(defaultValue = "10") size: Int = 10
     ): ResponseEntity<ApiResponse<List<NewsResponse>>> {
-        logger.info { "GET /api/news/search - Searching news with keyword: $keyword" }
+        logger.info { "GET /api/news/search" }
 
-        return runCatching {
-            val searchRequest = NewsSearchRequest(
-                keyword = keyword,
-                source = source,
-                size = size
+        val searchRequest = NewsSearchRequest(
+            keyword = keyword,
+            source = source,
+            size = size
+        )
+
+        val searchResults = newsService.searchNewsWithLimit(searchRequest)
+
+        return ResponseEntity.ok(
+            ApiResponse.success(
+                data = searchResults,
+                message = "키워드 '$keyword'로 ${searchResults.size}개의 뉴스를 찾았습니다."
             )
-
-            newsService.searchNewsWithLimit(searchRequest)
-        }.fold(
-            onSuccess = { searchResults ->
-                logger.info { "Successfully found ${searchResults.size} news articles for keyword: $keyword" }
-
-                ResponseEntity.ok(
-                    ApiResponse.success(
-                        data = searchResults,
-                        message = "키워드 '$keyword'로 ${searchResults.size}개의 뉴스를 찾았습니다."
-                    )
-                )
-            },
-            onFailure = { exception ->
-                logger.error { "Error searching news with keyword: $keyword" }
-                throw GlobalException(
-                    ExceptionCode.INTERNAL_SERVER_ERROR,
-                    "뉴스 검색 중 오류가 발생했습니다. ${exception.message}"
-                )
-            }
         )
     }
-    
-    /**
-     * 뉴스 기사 저장
-     * POST /api/news
-     */
+
     @PostMapping
     fun createNews(@RequestBody request: NewsCreateRequest): ResponseEntity<ApiResponse<NewsResponse>> {
-        logger.info { "POST /api/news - Creating news: ${request.title}" }
+        logger.info { "POST /api/news" }
 
-        return runCatching {
-            newsService.createNews(request)
-        }.fold(
-            onSuccess = { newsResponse ->
-                logger.info { "Successfully created news with UUID: ${newsResponse.id}" }
-                ResponseEntity.ok(
-                    ApiResponse.success(
-                        data = newsResponse,
-                        message = "뉴스 기사가 성공적으로 저장되었습니다."
-                    )
-                )
-            },
-            onFailure = { exception ->
-                logger.error(exception) { "Error creating news: ${request.title}" }
-                throw GlobalException(ExceptionCode.INTERNAL_SERVER_ERROR, "뉴스 기사 저장 중 오류가 발생했습니다. $exception.message")
-            }
+        val newsResponse = newsService.createNews(request)
+
+        return ResponseEntity.ok(
+            ApiResponse.success(
+                data = newsResponse,
+                message = "뉴스 기사가 성공적으로 저장되었습니다."
+            )
         )
     }
 
-    /**
-     * 뉴스 기사 삭제
-     * DELETE /api/news/{id}
-     */
     @DeleteMapping("/{id}")
-    fun deleteNews(@PathVariable id: String): ResponseEntity<ApiResponse<Boolean>> {
-        logger.info { "DELETE /api/news/$id - Deleting news article" }
+    fun deleteNews(@PathVariable id: String): ResponseEntity<ApiResponse<String>> {
+        logger.info { "DELETE /api/news/$id" }
 
-        return runCatching {
-            newsService.deleteNews(id)
-        }.fold(
-            onSuccess = { deleted ->
-                val (message, logMessage) = if (deleted) {
-                    "뉴스 기사가 성공적으로 삭제되었습니다." to "Successfully deleted news article: $id"
-                } else {
-                    "삭제할 뉴스 기사를 찾을 수 없습니다." to "News article not found for deletion: $id"
-                }
+        newsService.deleteNews(id) // Boolean이 아닌 성공 시에만 실행됨
 
-                logger.info { logMessage }
-                ResponseEntity.ok(ApiResponse.success(data = deleted, message = message))
-            },
-            onFailure = { exception ->
-                logger.error(exception) { "Error deleting news article: $id" }
-                throw GlobalException(
-                     ExceptionCode.INTERNAL_SERVER_ERROR,
-                    "뉴스 기사 삭제 중 오류가 발생했습니다. ${exception.message}"
-                )
-            }
+        return ResponseEntity.ok(
+            ApiResponse.success(
+                data = "삭제 완료",
+                message = "뉴스 기사가 성공적으로 삭제되었습니다."
+            )
         )
     }
 }
