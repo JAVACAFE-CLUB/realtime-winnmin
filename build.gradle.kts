@@ -28,7 +28,8 @@ dependencies {
     // 🌐 웹 프레임워크 & 핵심
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-thymeleaf")
-    
+    implementation("org.springframework.boot:spring-boot-starter-aop")
+
     // 📊 모니터링 & 운영
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     
