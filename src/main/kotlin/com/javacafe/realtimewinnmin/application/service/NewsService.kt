@@ -5,6 +5,8 @@ import com.javacafe.realtimewinnmin.common.exception.ExceptionCode
 import com.javacafe.realtimewinnmin.common.exception.GlobalException
 import com.javacafe.realtimewinnmin.domain.news.repository.NewsRepository
 import io.github.oshai.kotlinlogging.KotlinLogging
+import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
 
 @Service
@@ -17,15 +19,17 @@ class NewsService(
         logger.info { "searchNewsWithLimit 검색 keyword: ${request.keyword}" }
 
         return runCatching {
-            val searchResults = newsRepository.findTopByKeywordOrderByCreatedAtDesc(
-                keyword = request.keyword,
-                limit = request.size
+            val sort = Sort.by(Sort.Direction.DESC, "createdAt")
+            val pageable = PageRequest.of(0, request.size, sort)
+            val searchResults = newsRepository.findByTitleContainingOrContentContainingOrderByCreatedAtDesc(
+                title = request.keyword,
+                content = request.keyword,
+                pageable = pageable
             )
-
-            searchResults.map(NewsResponse::from)
+            searchResults.content.map(NewsResponse::from)
         }.fold(
             onSuccess = { results ->
-                logger.info { "[keyword] : ${request.keyword}에 대한 뉴스기사 ${results.size} 개 검색됨" }
+                logger.info { "[keyword]: ${request.keyword}에 대한 뉴스기사 ${results.size}개 검색됨" }
                 results
             },
             onFailure = { exception ->
