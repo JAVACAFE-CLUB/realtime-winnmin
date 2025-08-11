@@ -22,8 +22,6 @@ class NewsController(
         @RequestParam(defaultValue = "manual") source: String = "manual",
         @RequestParam(defaultValue = "10") size: Int = 10
     ): ResponseEntity<ApiResponse<List<NewsResponse>>> {
-        logger.info { "GET /api/news/search" }
-
         val searchRequest = NewsSearchRequest(
             keyword = keyword,
             source = source,
@@ -42,8 +40,6 @@ class NewsController(
 
     @PostMapping
     fun createNews(@RequestBody request: NewsCreateRequest): ResponseEntity<ApiResponse<NewsResponse>> {
-        logger.info { "POST /api/news" }
-
         val newsResponse = newsService.createNews(request)
 
         return ResponseEntity.ok(
@@ -56,8 +52,6 @@ class NewsController(
 
     @DeleteMapping("/{id}")
     fun deleteNews(@PathVariable id: String): ResponseEntity<ApiResponse<String>> {
-        logger.info { "DELETE /api/news/$id" }
-
         newsService.deleteNews(id) // Boolean이 아닌 성공 시에만 실행됨
 
         return ResponseEntity.ok(
