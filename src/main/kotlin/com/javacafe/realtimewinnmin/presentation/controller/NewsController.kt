@@ -5,7 +5,6 @@ import com.javacafe.realtimewinnmin.application.dto.NewsResponse
 import com.javacafe.realtimewinnmin.application.dto.NewsSearchRequest
 import com.javacafe.realtimewinnmin.application.service.NewsService
 import com.javacafe.realtimewinnmin.common.dto.ApiResponse
-import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
