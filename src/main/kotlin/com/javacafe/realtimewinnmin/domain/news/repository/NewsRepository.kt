@@ -3,7 +3,6 @@ package com.javacafe.realtimewinnmin.domain.news.repository
 import com.javacafe.realtimewinnmin.domain.news.entity.NewsArticle
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
-import org.springframework.data.elasticsearch.annotations.Query
 import org.springframework.data.elasticsearch.repository.ElasticsearchRepository
 import org.springframework.stereotype.Repository
 

@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.*
 class NewsController(
     private val newsService: NewsService
 ) {
-    private val logger = KotlinLogging.logger { }
 
     @GetMapping("/search")
     fun searchNews(
