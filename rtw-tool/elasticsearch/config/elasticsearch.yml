@@ -1,0 +1,18 @@
+# 클러스터 설정
+cluster.name: "es-docker-cluster"
+node.name: "elasticsearch"
+
+# 네트워크 설정
+network.host: 0.0.0.0
+http.port: 9200
+
+# 디스커버리 설정 (단일 노드)
+discovery.type: single-node
+
+# 보안 설정 비활성화 (개발용)
+xpack.security.enabled: false
+
+# ❌ 아래 인덱스 설정들을 모두 제거!
+# index.analysis.analyzer.korean.type: custom
+# index.analysis.analyzer.korean.tokenizer: nori_tokenizer
+# index.analysis.analyzer.korean.filter: ["lowercase", "nori_part_of_speech"]
