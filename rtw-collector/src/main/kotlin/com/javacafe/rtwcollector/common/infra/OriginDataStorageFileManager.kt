@@ -1,7 +1,7 @@
 package com.javacafe.rtwcollector.common.infra
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.javacafe.rtwcollector.common.utils.DateTimeUtils
+import com.javacafe.rtwcore.utils.DateTimeUtils
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers

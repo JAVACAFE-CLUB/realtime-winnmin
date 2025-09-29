@@ -1,16 +1,16 @@
 package com.javacafe.rtwcollector.filecrawler.service
 
-import com.javacafe.rtwcollector.common.constants.CollectorConstant
 import com.javacafe.rtwcollector.common.infra.CollectorKafkaProduceMessage
-import com.javacafe.rtwcollector.common.infra.KafkaMessageProducer
 import com.javacafe.rtwcollector.common.infra.OriginDataStorageFileManager
-import com.javacafe.rtwcollector.common.utils.DateTimeUtils
-import com.javacafe.rtwcollector.common.utils.chunked
-import com.javacafe.rtwcollector.common.utils.mapIndexed
 import com.javacafe.rtwcollector.filecrawler.dto.ChunkResult
 import com.javacafe.rtwcollector.filecrawler.dto.ProcessingResult
 import com.javacafe.rtwcollector.filecrawler.model.WikiPage
 import com.javacafe.rtwcollector.filecrawler.processor.WikiXmlStreamParser
+import com.javacafe.rtwcore.constants.CollectorConstant
+import com.javacafe.rtwcore.infra.KafkaMessageProducer
+import com.javacafe.rtwcore.utils.DateTimeUtils
+import com.javacafe.rtwcore.utils.chunked
+import com.javacafe.rtwcore.utils.mapIndexed
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -20,7 +20,7 @@ import java.nio.file.Paths
 
 @Service
 class WikiFileCrawlService(
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val ioDispatcher: CoroutineDispatcher,
     private val kafkaMessageProducer: KafkaMessageProducer,
     private val originDataStorageFileManager: OriginDataStorageFileManager,
     private val wikiXmlStreamParser: WikiXmlStreamParser

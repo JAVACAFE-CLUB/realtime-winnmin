@@ -1,4 +1,4 @@
-package com.javacafe.rtwcollector.common.config
+package com.javacafe.rtwcore.config
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean

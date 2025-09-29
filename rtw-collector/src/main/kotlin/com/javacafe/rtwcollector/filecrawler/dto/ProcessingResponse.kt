@@ -1,6 +1,6 @@
 package com.javacafe.rtwcollector.filecrawler.dto
 
-import com.javacafe.rtwcollector.common.utils.DateTimeUtils
+import com.javacafe.rtwcore.utils.DateTimeUtils
 
 data class ProcessingResponse(
     val success: Boolean,

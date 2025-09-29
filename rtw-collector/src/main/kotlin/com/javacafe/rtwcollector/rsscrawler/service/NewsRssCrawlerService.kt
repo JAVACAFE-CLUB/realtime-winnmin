@@ -1,19 +1,18 @@
 package com.javacafe.rtwcollector.rsscrawler.service
 
-import com.javacafe.rtwcollector.common.constants.CollectorConstant
 import com.javacafe.rtwcollector.common.infra.CollectorKafkaProduceMessage
 import com.javacafe.rtwcollector.rsscrawler.processor.HttpClientComponent
-import com.javacafe.rtwcollector.common.infra.KafkaMessageProducer
 import com.javacafe.rtwcollector.common.infra.OriginDataStorageFileManager
-import com.javacafe.rtwcollector.common.utils.DateTimeUtils
 import com.javacafe.rtwcollector.rsscrawler.dto.CrawlResult
 import com.javacafe.rtwcollector.rsscrawler.dto.CrawlSummary
 import com.javacafe.rtwcollector.rsscrawler.model.NewsItem
 import com.javacafe.rtwcollector.rsscrawler.processor.RssParser
 import com.javacafe.rtwcollector.rsscrawler.processor.RssSource
+import com.javacafe.rtwcore.constants.CollectorConstant
+import com.javacafe.rtwcore.infra.KafkaMessageProducer
+import com.javacafe.rtwcore.utils.DateTimeUtils
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.flatMapMerge
@@ -28,7 +27,7 @@ class NewsRssCrawlerService(
     private val rssParser: RssParser,
     private val kafkaMessageProducer: KafkaMessageProducer,
     private val originDataStorageFileManager: OriginDataStorageFileManager,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    private val ioDispatcher: CoroutineDispatcher
 ) {
 
     companion object {

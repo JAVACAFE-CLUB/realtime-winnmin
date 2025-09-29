@@ -1,4 +1,4 @@
-package com.javacafe.rtwcollector.common.infra
+package com.javacafe.rtwcore.infra
 
 import kotlinx.coroutines.future.await
 import org.springframework.kafka.core.KafkaTemplate

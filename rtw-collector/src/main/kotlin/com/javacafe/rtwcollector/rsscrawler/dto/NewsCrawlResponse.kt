@@ -1,6 +1,7 @@
 package com.javacafe.rtwcollector.rsscrawler.dto
 
-import com.javacafe.rtwcollector.common.utils.DateTimeUtils
+import com.javacafe.rtwcore.utils.DateTimeUtils
+
 
 data class NewsCrawlResponse(
     val status: CrawlStatus,

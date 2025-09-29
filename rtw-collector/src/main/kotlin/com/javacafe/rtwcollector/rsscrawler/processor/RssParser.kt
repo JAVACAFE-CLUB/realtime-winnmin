@@ -4,7 +4,6 @@ import com.javacafe.rtwcollector.rsscrawler.model.NewsItem
 import com.javacafe.rtwcollector.rsscrawler.model.RssParseResult
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Entities
@@ -14,7 +13,7 @@ import java.nio.charset.StandardCharsets
 
 @Component
 class RssParser(
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    private val ioDispatcher: CoroutineDispatcher
 ) {
     private val logger = KotlinLogging.logger { }
 

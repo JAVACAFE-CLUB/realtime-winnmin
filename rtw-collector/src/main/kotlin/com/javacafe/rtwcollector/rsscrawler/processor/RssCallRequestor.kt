@@ -2,13 +2,9 @@ package com.javacafe.rtwcollector.rsscrawler.processor
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import org.springframework.beans.factory.annotation.Qualifier
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor
-import org.springframework.stereotype.Component
 import org.springframework.stereotype.Service
 import java.io.IOException
 import java.net.URI
@@ -24,7 +20,7 @@ import kotlin.coroutines.resumeWithException
 @Service
 class HttpClientComponent(
     private val httpClient: HttpClient,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    private val ioDispatcher: CoroutineDispatcher
 ) {
 
     private val logger = KotlinLogging.logger { }

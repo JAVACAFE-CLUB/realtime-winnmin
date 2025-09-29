@@ -1,4 +1,4 @@
-package com.javacafe.rtwcollector.common.constants
+package com.javacafe.rtwcore.constants
 
 object CollectorConstant {
 

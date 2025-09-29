@@ -5,7 +5,6 @@ import com.javacafe.rtwcollector.snscrawler.service.TwitterCrawlerService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -18,7 +17,7 @@ import org.springframework.web.context.request.async.DeferredResult
 @RestController
 @RequestMapping("/api/twitter")
 class TwitterCrawlerController(
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val ioDispatcher: CoroutineDispatcher,
     private val twitterCrawlerService: TwitterCrawlerService
 ) {
     companion object {

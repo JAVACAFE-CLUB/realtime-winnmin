@@ -1,4 +1,4 @@
-package com.javacafe.rtwcollector.common.utils
+package com.javacafe.rtwcore.utils
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow

@@ -1,4 +1,4 @@
-package com.javacafe.rtwcollector.common.utils
+package com.javacafe.rtwcore.utils
 
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
