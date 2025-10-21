@@ -13,7 +13,7 @@ import org.springframework.web.context.request.async.DeferredResult
 
 @RestController
 @RequestMapping("/api/wiki")
-class WikiProcessorController(
+class WikiXMLParsingController(
     private val ioDispatcher: CoroutineDispatcher,
     private val wikiFileCrawlService: WikiFileCrawlService
 ) {

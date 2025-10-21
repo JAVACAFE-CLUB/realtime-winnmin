@@ -1,8 +1,7 @@
 package com.javacafe.rtwcollector.filecrawler.service
 
 import com.javacafe.rtwcollector.common.infra.CollectorKafkaProduceMessage
-import com.javacafe.rtwcollector.common.infra.OriginDataStorageFileManager
-import com.javacafe.rtwcollector.filecrawler.dto.ChunkResult
+import com.javacafe.rtwcollector.common.infra.OriginDataStorageManager
 import com.javacafe.rtwcollector.filecrawler.dto.ProcessingResult
 import com.javacafe.rtwcollector.filecrawler.model.WikiPage
 import com.javacafe.rtwcollector.filecrawler.processor.WikiXmlStreamParser
@@ -10,7 +9,6 @@ import com.javacafe.rtwcore.constants.CollectorConstant
 import com.javacafe.rtwcore.infra.KafkaMessageProducer
 import com.javacafe.rtwcore.utils.DateTimeUtils
 import com.javacafe.rtwcore.utils.chunked
-import com.javacafe.rtwcore.utils.mapIndexed
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -22,50 +20,58 @@ import java.nio.file.Paths
 class WikiFileCrawlService(
     private val ioDispatcher: CoroutineDispatcher,
     private val kafkaMessageProducer: KafkaMessageProducer,
-    private val originDataStorageFileManager: OriginDataStorageFileManager,
+    private val originDataStorageManager: OriginDataStorageManager,
     private val wikiXmlStreamParser: WikiXmlStreamParser
 ) {
 
     companion object {
         private val logger = KotlinLogging.logger { }
+        private const val BATCH_SIZE = 50
+        private const val MAX_CONCURRENT_BATCHES = 5
     }
 
     suspend fun processWikiFile(filePath: String): ProcessingResult = coroutineScope {
-        logger.info { "Starting Wiki file processing: $filePath" }
+        logger.info {
+            "Starting Wiki file processing (batch parallel mode): $filePath " +
+                    "(batch size: $BATCH_SIZE, max concurrent: $MAX_CONCURRENT_BATCHES)"
+        }
 
         val path = Paths.get(filePath).also {
             require(Files.exists(it)) { "File does not exist: $it" }
             require(Files.isReadable(it)) { "File is not readable: $it" }
             require(Files.size(it) > 0) { "File is empty: $it" }
         }
+
         var totalPages = 0
-        var totalChunks = 0
+        var successCount = 0
+        var failCount = 0
         val errors = mutableListOf<String>()
 
         runCatching {
-            // 1. 호출한 스레드에서 실행
             wikiXmlStreamParser.parsePages(path)
-                .flowOn(ioDispatcher) // 2. IO 스레드로 전환
-                .buffer(CollectorConstant.WIKI_CHUNK_PER_SIZE * 2)
-                .chunked(CollectorConstant.WIKI_CHUNK_PER_SIZE)
-                .mapIndexed { chunkIndex, pages ->
-                    async { processChunk(pages, chunkIndex) } // 3. 각 청크마다 새로운 코루틴
+                .flowOn(ioDispatcher)
+                .buffer(BATCH_SIZE * 2)
+                .chunked(BATCH_SIZE)
+                .map { batch ->
+                    async {
+                        totalPages += batch.size
+                        processBatchParallel(batch, filePath)
+                    }
                 }
-                .buffer(10) // 동시 처리 제한
+                .buffer(MAX_CONCURRENT_BATCHES)
                 .collect { deferredResult ->
-                    // 4. 각 async 결과를 기다림
                     deferredResult.await().fold(
-                        onSuccess = { chunkResult ->
-                            totalPages += chunkResult.pageCount
-                            totalChunks++
-                            logger.debug {
-                                "Chunk ${chunkResult.chunkIndex} completed: ${chunkResult.pageCount} pages"
+                        onSuccess = { savedCount ->
+                            successCount += savedCount
+                            logger.info {
+                                "Progress: $successCount/$totalPages pages saved"
                             }
                         },
                         onFailure = { exception ->
-                            errors.add("Chunk processing failed: ${exception.message}")
+                            failCount += BATCH_SIZE
+                            errors.add("Batch processing failed: ${exception.message}")
                             logger.error(exception) {
-                                "Failed to process chunk in file: $filePath"
+                                "Failed to process batch from: $filePath"
                             }
                         }
                     )
@@ -76,56 +82,61 @@ class WikiFileCrawlService(
         }
 
         val result = ProcessingResult(
-            totalPages = totalPages,
-            totalChunks = totalChunks,
+            totalPages = successCount,
+            totalChunks = 0,
             errors = errors
         )
+
         logger.info {
             "Wiki file processing completed: $filePath " +
-                    "(${result.totalPages} pages, ${result.totalChunks} chunks, ${result.errors.size} errors)"
+                    "($successCount/$totalPages pages successful, $failCount failed)"
         }
 
         result
     }
 
-    private suspend fun processChunk(
+    /**
+     * 배치를 병렬로 저장
+     */
+    private suspend fun processBatchParallel(
         pages: List<WikiPage>,
-        chunkIndex: Int
-    ): Result<ChunkResult> = runCatching {
-        logger.debug { "Processing chunk $chunkIndex with ${pages.size} pages" }
+        sourceFile: String
+    ): Result<Int> = coroutineScope {  // ✅ coroutineScope 추가
+        runCatching {
+            logger.debug { "Processing batch of ${pages.size} pages in parallel" }
 
-        val fileWriteResult = originDataStorageFileManager.saveParsedOriginDataToFile(
-            originData = pages,
-            prefix = CollectorConstant.WIKI_CRAWL_PREFIX
-        )
+            // MongoDB 저장
+            val results = originDataStorageManager.saveBatchOriginData(
+                originDataList = pages,
+                prefix = CollectorConstant.WIKI_CRAWL_PREFIX,
+                metadata = mapOf(
+                    "sourceFile" to sourceFile,
+                    "collectionTimestamp" to DateTimeUtils.localDateTimeNowAsStr()
+                )
+            ).getOrThrow()
 
-        fileWriteResult.getOrThrow().let { fileInfo ->
-            val metadata = CollectorKafkaProduceMessage(
-                fileId = fileInfo.fileId,
-                filePath = fileInfo.path,
-                fileSize = fileInfo.fileSize,
-                fileChecksum = fileInfo.checksum,
-                source = CollectorConstant.CRAWL_TYPE_WIKI_FILE,
-                timestamp = DateTimeUtils.localDateTimeNowAsStr(),
-            )
+            // ✅ Kafka 메시지 병렬 전송
+            results.forEach { storageWriteResult ->
+                launch(Dispatchers.IO) {  // ✅ 이제 coroutineScope 내부라서 가능
+                    val metadata = CollectorKafkaProduceMessage(
+                        fileId = storageWriteResult.id,
+                        filePath = storageWriteResult.storageLocation,
+                        fileSize = storageWriteResult.dataSize,
+                        fileChecksum = storageWriteResult.checksum,
+                        source = CollectorConstant.CRAWL_TYPE_WIKI_FILE,
+                        timestamp = DateTimeUtils.localDateTimeNowAsStr(),
+                    )
 
-            kafkaMessageProducer.sendCollectorCrawledMetadata(
-                messageId = metadata.fileId,
-                payload = metadata,
-                topic = CollectorConstant.WIKI_KAFKA_TOPIC
-            )
-
-            logger.info {
-                "Successfully processed chunk $chunkIndex: ${metadata.fileId} " +
-                        "(${pages.size} pages, ${metadata.fileSize} bytes)"
+                    kafkaMessageProducer.sendCollectorCrawledMetadata(
+                        messageId = metadata.fileId,
+                        payload = metadata,
+                        topic = CollectorConstant.WIKI_KAFKA_TOPIC
+                    )
+                }
             }
 
-            ChunkResult(
-                chunkIndex = chunkIndex,
-                pageCount = pages.size,
-                fileId = fileInfo.fileId,
-                fileSize = fileInfo.fileSize
-            )
+            logger.info { "Successfully processed batch: ${results.size} pages saved" }
+            results.size
         }
     }
 }

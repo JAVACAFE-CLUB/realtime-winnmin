@@ -2,7 +2,7 @@ package com.javacafe.rtwcollector.rsscrawler.service
 
 import com.javacafe.rtwcollector.common.infra.CollectorKafkaProduceMessage
 import com.javacafe.rtwcollector.rsscrawler.processor.HttpClientComponent
-import com.javacafe.rtwcollector.common.infra.OriginDataStorageFileManager
+import com.javacafe.rtwcollector.common.infra.OriginDataStorageManager
 import com.javacafe.rtwcollector.rsscrawler.dto.CrawlResult
 import com.javacafe.rtwcollector.rsscrawler.dto.CrawlSummary
 import com.javacafe.rtwcollector.rsscrawler.model.NewsItem
@@ -26,7 +26,7 @@ class NewsRssCrawlerService(
     private val httpClientComponent: HttpClientComponent,
     private val rssParser: RssParser,
     private val kafkaMessageProducer: KafkaMessageProducer,
-    private val originDataStorageFileManager: OriginDataStorageFileManager,
+    private val originDataStorageManager: OriginDataStorageManager,  // ✅ 인터페이스로 변경
     private val ioDispatcher: CoroutineDispatcher
 ) {
 
@@ -74,7 +74,13 @@ class NewsRssCrawlerService(
                 )
             }
 
-            val totalProcessed = processNewsItems(parseResult.items, source)
+            logger.info {
+                "Parsed ${parseResult.items.size} news items from ${source.sourceName}, " +
+                        "processing as individual documents..."
+            }
+
+            // ✅ 단건 저장 방식으로 변경
+            val totalProcessed = processNewsItemsAsSingle(parseResult.items, source)
 
             CrawlResult(
                 source = source,
@@ -98,6 +104,90 @@ class NewsRssCrawlerService(
             }
         )
 
+    /**
+     * 뉴스 항목들을 개별 Document로 저장 (신규 방식)
+     *
+     * 각 NewsItem을 별도의 MongoDB Document로 저장
+     */
+    private suspend fun processNewsItemsAsSingle(
+        items: List<NewsItem>,
+        source: RssSource
+    ): Int {
+        var successCount = 0
+
+        items.forEach { newsItem ->
+            processNewsSingleItem(newsItem, source).fold(
+                onSuccess = {
+                    successCount++
+                },
+                onFailure = { exception ->
+                    logger.warn(exception) {
+                        "Failed to process news item (title: ${newsItem.title}), skipping..."
+                    }
+                    // 실패해도 다음 항목은 계속 처리
+                }
+            )
+        }
+
+        logger.info {
+            "Processed $successCount/${items.size} news items from ${source.sourceName}"
+        }
+
+        return successCount
+    }
+
+    /**
+     * 단일 뉴스 항목 저장 및 Kafka 전송
+     */
+    private suspend fun processNewsSingleItem(
+        newsItem: NewsItem,
+        source: RssSource
+    ): Result<Unit> = runCatching {
+        logger.debug {
+            "Processing single news item: ${newsItem.title} from ${source.sourceName}"
+        }
+
+        // 1. 단일 뉴스 항목 저장
+        val storageWriteResult = originDataStorageManager.saveSingleOriginData(
+            originData = newsItem,
+            prefix = CollectorConstant.RSS_CRAWL_PREFIX,
+            metadata = mapOf(
+                "sourceName" to source.sourceName,
+                "sourceUrl" to source.url,
+                "category" to source.category,
+                "collectionTimestamp" to DateTimeUtils.localDateTimeNowAsStr()
+            )
+        ).getOrThrow()
+
+        // 2. Kafka 메시지 생성 및 전송
+        val metadata = CollectorKafkaProduceMessage(
+            fileId = storageWriteResult.id,
+            filePath = storageWriteResult.storageLocation,
+            fileSize = storageWriteResult.dataSize,
+            fileChecksum = storageWriteResult.checksum,
+            source = CollectorConstant.CRAWL_TYPE_NEWS_RSS,
+            timestamp = DateTimeUtils.localDateTimeNowAsStr(),
+        )
+
+        kafkaMessageProducer.sendCollectorCrawledMetadata(
+            messageId = metadata.fileId,
+            payload = metadata,
+            topic = CollectorConstant.RSS_KAFKA_TOPIC
+        )
+
+        logger.debug {
+            "Successfully saved news item: ${metadata.fileId} " +
+                    "(title: ${newsItem.title}, ${metadata.fileSize} bytes) " +
+                    "from ${source.sourceName}"
+        }
+    }
+
+    /**
+     * 청크 방식 처리 (하위 호환성 - deprecated)
+     *
+     * @deprecated processNewsItemsAsSingle() 사용 권장
+     */
+    @Deprecated("Use processNewsItemsAsSingle() for individual item processing")
     private suspend fun processNewsItems(items: List<NewsItem>, source: RssSource): Int {
         var totalProcessed = 0
 
@@ -110,30 +200,35 @@ class NewsRssCrawlerService(
                     logger.error(exception) {
                         "Failed to process chunk of ${chunk.size} items from ${source.sourceName}"
                     }
-                    // 청크 실패해도 다음 청크는 계속 처리
+// 청크 실패해도 다음 청크는 계속 처리
                 }
             )
         }
-
         return totalProcessed
     }
 
+    /**
+     * 청크 단위 저장 (하위 호환성 - deprecated)
+     *
+     * @deprecated processNewsSingleItem() 사용 권장
+     */
+    @Deprecated("Use processNewsSingleItem() for individual item processing")
     private suspend fun processNewsChunk(
         items: List<NewsItem>,
         source: RssSource
     ): Result<Int> = runCatching {
         logger.debug { "Processing ${items.size} news items from ${source.sourceName} - ${source.category}" }
 
-        val fileWriteResult = originDataStorageFileManager.saveParsedOriginDataToFile(
+        val storageWriteResult = originDataStorageManager.saveParsedOriginData(
             originData = items,
             prefix = CollectorConstant.RSS_CRAWL_PREFIX
         ).getOrThrow()
 
         val metadata = CollectorKafkaProduceMessage(
-            fileId = fileWriteResult.fileId,
-            filePath = fileWriteResult.path,
-            fileSize = fileWriteResult.fileSize,
-            fileChecksum = fileWriteResult.checksum,
+            fileId = storageWriteResult.id,
+            filePath = storageWriteResult.storageLocation,
+            fileSize = storageWriteResult.dataSize,
+            fileChecksum = storageWriteResult.checksum,
             source = CollectorConstant.CRAWL_TYPE_NEWS_RSS,
             timestamp = DateTimeUtils.localDateTimeNowAsStr(),
         )
@@ -141,7 +236,7 @@ class NewsRssCrawlerService(
         kafkaMessageProducer.sendCollectorCrawledMetadata(
             messageId = metadata.fileId,
             payload = metadata,
-            topic = CollectorConstant.RSS_KAFKA_TOPIC
+            topic = CollectorConstant.TWITTER_KAFKA_TOPIC
         )
 
         logger.info {
