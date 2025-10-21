@@ -1,63 +1,59 @@
 plugins {
-    kotlin("jvm") version "1.9.25"
-    kotlin("plugin.spring") version "1.9.25"
-    id("org.springframework.boot") version "3.5.3"
-    id("io.spring.dependency-management") version "1.1.7"
+    kotlin("jvm") version "1.9.25" apply false
+    kotlin("plugin.spring") version "1.9.25" apply false
+    id("org.springframework.boot") version "3.5.3" apply false
+    id("io.spring.dependency-management") version "1.1.7" apply false
 }
+
+// Gradle Wrapper 설정
+tasks.wrapper {
+    gradleVersion = "8.10"
+    distributionType = Wrapper.DistributionType.BIN
+}
+
 
 group = "com.javacafe"
 version = "0.0.1-SNAPSHOT"
 
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(17)
+// 모든 서브모듈에 공통 적용될 설정
+subprojects {
+    apply(plugin = "org.jetbrains.kotlin.jvm")
+    apply(plugin = "org.jetbrains.kotlin.plugin.spring")
+    apply(plugin = "io.spring.dependency-management")
+
+    group = rootProject.group
+    version = rootProject.version
+
+    // Java 툴체인 설정
+    configure<JavaPluginExtension> {
+        toolchain {
+            languageVersion.set(JavaLanguageVersion.of(17))
+        }
     }
-}
 
-configurations {
-    compileOnly {
-        extendsFrom(configurations.annotationProcessor.get())
+    configurations {
+        val compileOnly by getting {
+            extendsFrom(configurations.getByName("annotationProcessor"))
+        }
     }
-}
 
-repositories {
-    mavenCentral()
-}
-
-dependencies {
-    // 🌐 웹 프레임워크 & 핵심
-    implementation("org.springframework.boot:spring-boot-starter-web")
-    implementation("org.springframework.boot:spring-boot-starter-thymeleaf")
-    implementation("org.springframework.boot:spring-boot-starter-aop")
-
-    // 📊 모니터링 & 운영
-    implementation("org.springframework.boot:spring-boot-starter-actuator")
-    
-    // 🔍 Elasticsearch (Spring Boot 3.5.3 호환 버전)
-    implementation("org.springframework.boot:spring-boot-starter-data-elasticsearch")
-    
-    // 🔧 Kotlin 지원
-    implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
-    implementation("org.jetbrains.kotlin:kotlin-reflect")
-    implementation("io.github.oshai:kotlin-logging-jvm:7.0.3")
-
-    // ⚙️ 개발 도구
-    developmentOnly("org.springframework.boot:spring-boot-devtools")
-    annotationProcessor("org.springframework.boot:spring-boot-configuration-processor")
-    
-    // 🧪 테스트
-    testImplementation("org.springframework.boot:spring-boot-starter-test")
-    testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
-    testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-}
-
-kotlin {
-    compilerOptions {
-        freeCompilerArgs.addAll("-Xjsr305=strict")
+    repositories {
+        mavenCentral()
     }
-}
 
-tasks.withType<Test> {
-    useJUnitPlatform()
+    dependencies {
+        // 모든 모듈에서 공통으로 사용할 기본 의존성들
+    }
+
+    // Kotlin 컴파일러 옵션 설정
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
+        kotlinOptions {
+            freeCompilerArgs = listOf("-Xjsr305=strict")
+            jvmTarget = "17"
+        }
+    }
+
+    tasks.withType<Test> {
+        useJUnitPlatform()
+    }
 }

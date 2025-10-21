@@ -38,3 +38,4 @@ out/
 
 ### Kotlin ###
 .kotlin
+rtw-tool/kafka-data/
