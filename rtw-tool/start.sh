@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🚀 Elasticsearch + Kibana + Kafka + Nori 플러그인 설치 및 실행"
+echo "🚀 Elasticsearch + Kibana + Kafka + MongoDB + Nori 플러그인 설치 및 실행"
 
 # Nori 플러그인이 설치되어 있는지 확인하는 함수
 check_nori_plugin() {
@@ -33,6 +33,26 @@ check_service_health() {
     return 1
 }
 
+# MongoDB 상태 확인 함수
+check_mongodb_health() {
+    local max_attempts=20
+    local attempt=1
+
+    echo "🔍 MongoDB 상태 확인 중..."
+    while [ $attempt -le $max_attempts ]; do
+        if docker exec mongodb mongosh --eval "db.adminCommand('ping')" --quiet > /dev/null 2>&1; then
+            echo "✅ MongoDB 준비 완료!"
+            return 0
+        fi
+        echo "⏳ MongoDB 시작 대기 중... ($attempt/$max_attempts)"
+        sleep 5
+        ((attempt++))
+    done
+
+    echo "❌ MongoDB 시작 실패 또는 시간 초과"
+    return 1
+}
+
 # Kafka 토픽 생성 함수
 create_kafka_topics() {
     echo "📝 기본 Kafka 토픽 생성 중..."
@@ -42,7 +62,45 @@ create_kafka_topics() {
     docker exec kafka kafka-topics --bootstrap-server localhost:9092 --create --topic events --partitions 3 --replication-factor 1 --if-not-exists
     docker exec kafka kafka-topics --bootstrap-server localhost:9092 --create --topic metrics --partitions 3 --replication-factor 1 --if-not-exists
 
+    # 크롤러 관련 토픽들 생성
+    docker exec kafka kafka-topics --bootstrap-server localhost:9092 --create --topic twitter-items --partitions 10 --replication-factor 1 --if-not-exists
+    docker exec kafka kafka-topics --bootstrap-server localhost:9092 --create --topic rss-items --partitions 10 --replication-factor 1 --if-not-exists
+    docker exec kafka kafka-topics --bootstrap-server localhost:9092 --create --topic wiki-items --partitions 10 --replication-factor 1 --if-not-exists
+
     echo "✅ 기본 토픽 생성 완료"
+}
+
+# MongoDB 초기 설정 함수
+setup_mongodb() {
+    echo "📝 MongoDB 초기 설정 중..."
+
+    # 초기화 스크립트가 실행되었는지 확인
+    if docker exec mongodb mongosh --eval "db.getSiblingDB('realtime_winnmin').getCollectionNames()" --quiet | grep -q "origin_data"; then
+        echo "✅ MongoDB가 이미 초기화되어 있습니다."
+    else
+        echo "🔧 MongoDB 컬렉션 및 인덱스 생성 중..."
+
+        # 인덱스 생성 스크립트 실행
+        docker exec mongodb mongosh --eval "
+        db = db.getSiblingDB('realtime_winnmin');
+
+        // origin_data 컬렉션 생성
+        if (!db.getCollectionNames().includes('origin_data')) {
+            db.createCollection('origin_data');
+            print('✅ origin_data 컬렉션 생성 완료');
+        }
+
+        // 인덱스 생성
+        db.origin_data.createIndex({ 'createdAt': -1 });
+        db.origin_data.createIndex({ 'prefix': 1, 'createdAt': -1 });
+        db.origin_data.createIndex({ 'source': 1 });
+        db.origin_data.createIndex({ 'createdAt': 1 }, { expireAfterSeconds: 2592000 });
+
+        print('✅ 인덱스 생성 완료');
+        " --quiet
+    fi
+
+    echo "✅ MongoDB 설정 완료"
 }
 
 # 1. 기존 컨테이너 중지 (볼륨은 보존)
@@ -81,12 +139,24 @@ fi
 # Elasticsearch 확인
 if ! check_service_health "Elasticsearch" "http://localhost:9200/_cluster/health"; then
     echo "❌ Elasticsearch 시작 실패"
+    echo "🔍 Elasticsearch 컨테이너 로그 확인:"
+    docker logs elasticsearch --tail 10
     exit 1
 fi
 
 # Kibana 확인
 if ! check_service_health "Kibana" "http://localhost:5601/api/status"; then
     echo "❌ Kibana 시작 실패"
+    echo "🔍 Kibana 컨테이너 로그 확인:"
+    docker logs kibana --tail 10
+    exit 1
+fi
+
+# MongoDB 확인
+if ! check_mongodb_health; then
+    echo "❌ MongoDB 시작 실패"
+    echo "🔍 MongoDB 컨테이너 로그 확인:"
+    docker logs mongodb --tail 10
     exit 1
 fi
 
@@ -118,7 +188,11 @@ fi
 echo ""
 create_kafka_topics
 
-# 7. 최종 상태 확인
+# 7. MongoDB 초기 설정
+echo ""
+setup_mongodb
+
+# 8. 최종 상태 확인
 echo ""
 echo "🔍 최종 상태 확인:"
 
@@ -130,6 +204,16 @@ curl -s http://localhost:9200/_nodes/plugins?pretty | grep -A3 -B1 nori || echo 
 echo ""
 echo "📋 Kafka 토픽 목록:"
 docker exec kafka kafka-topics --bootstrap-server localhost:9092 --list
+
+# MongoDB 컬렉션 확인
+echo ""
+echo "📋 MongoDB 컬렉션 목록:"
+docker exec mongodb mongosh --eval "db.getSiblingDB('realtime_winnmin').getCollectionNames()" --quiet
+
+# MongoDB 인덱스 확인
+echo ""
+echo "📋 MongoDB origin_data 인덱스:"
+docker exec mongodb mongosh --eval "db.getSiblingDB('realtime_winnmin').origin_data.getIndexes()" --quiet
 
 # 실행 중인 컨테이너 확인
 echo ""
@@ -144,10 +228,29 @@ echo "  • Elasticsearch: http://localhost:9200"
 echo "  • Kibana: http://localhost:5601"
 echo "  • Kafka: localhost:9092"
 echo "  • Kafka UI: http://localhost:8080"
+echo "  • MongoDB: mongodb://localhost:27017"
+echo "  • Mongo Express: http://localhost:8081 (admin/admin123)"
+echo ""
+echo "🔐 MongoDB 접속 정보:"
+echo "  • 관리자: admin / admin123"
+echo "  • 앱 사용자: rtw_app / rtw_password123"
+echo "  • 데이터베이스: realtime_winnmin"
 echo ""
 echo "🔧 유용한 명령어들:"
-echo "  • Kafka 토픽 목록: docker exec kafka kafka-topics --bootstrap-server localhost:9092 --list"
-echo "  • Kafka 메시지 전송: docker exec kafka kafka-console-producer --bootstrap-server localhost:9092 --topic logs"
-echo "  • Kafka 메시지 수신: docker exec kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic logs --from-beginning"
+echo ""
+echo "  [Kafka]"
+echo "  • 토픽 목록: docker exec kafka kafka-topics --bootstrap-server localhost:9092 --list"
+echo "  • 메시지 전송: docker exec kafka kafka-console-producer --bootstrap-server localhost:9092 --topic logs"
+echo "  • 메시지 수신: docker exec kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic logs --from-beginning"
+echo ""
+echo "  [MongoDB]"
+echo "  • MongoDB Shell 접속: docker exec -it mongodb mongosh -u admin -p admin123"
+echo "  • 앱 DB 접속: docker exec -it mongodb mongosh -u rtw_app -p rtw_password123 realtime_winnmin"
+echo "  • 데이터 조회: docker exec mongodb mongosh --eval 'db.getSiblingDB(\"realtime_winnmin\").origin_data.find().limit(5)' --quiet"
+echo "  • 데이터 개수: docker exec mongodb mongosh --eval 'db.getSiblingDB(\"realtime_winnmin\").origin_data.countDocuments()' --quiet"
+echo ""
+echo "  [Elasticsearch]"
+echo "  • 인덱스 목록: curl http://localhost:9200/_cat/indices?v"
+echo "  • 클러스터 상태: curl http://localhost:9200/_cluster/health?pretty"
 echo ""
 echo "💡 팁: 데이터를 완전히 초기화하려면 './reset.sh'를 실행하세요."

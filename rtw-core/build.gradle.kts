@@ -31,6 +31,9 @@ dependencies {
     api("org.springframework.boot:spring-boot-starter-web")
     api("org.springframework.boot:spring-boot-starter-aop")
 
+    // ===== MongoDB 의존성 =====
+    api("org.springframework.boot:spring-boot-starter-data-mongodb")
+
     // ===== Kafka =====
     api("org.springframework.kafka:spring-kafka")
 
