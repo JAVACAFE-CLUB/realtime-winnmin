@@ -33,10 +33,14 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         "rtw-tool_kibana_data"
         "rtw-tool_mongodb_data"
         "rtw-tool_mongodb_config"
+        "rtw-tool_prometheus_data"
+        "rtw-tool_grafana_data"
         "elasticsearch_data"
         "kibana_data"
         "mongodb_data"
         "mongodb_config"
+        "prometheus_data"
+        "grafana_data"
         "kafka_data"
     )
 
