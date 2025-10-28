@@ -1,1 +1,70 @@
-spring.application.name=rtw-datacleaning
+spring:
+  application:
+    name: rtw-dataclean
+  
+  # MongoDB 설정
+  data:
+    mongodb:
+      uri: mongodb://rtw_app:rtw_password123@localhost:27017/realtime_winnmin?authSource=realtime_winnmin&minPoolSize=10&maxPoolSize=100&maxWaitTimeMS=5000
+      database: realtime_winnmin
+
+# Kafka 설정
+kafka:
+  bootstrap-servers: localhost:9092
+
+# 애플리케이션 설정
+app:
+  # Kafka 토픽
+  kafka:
+    # Input 토픽들 (collector에서 받는 토픽)
+    # 각 토픽별 데이터 구조:
+    # - rss-items: data.htmlContent (HTML)
+    # - wiki-items: data.revision.text (HTML)
+    # - twitter-items: data.text (Plain Text)
+    input-topics:
+      - rss-items
+      - twitter-items
+      - wiki-items
+    
+    # Output 토픽 (Index 모듈로 전송하는 토픽)
+    output-topic: refined-data
+    
+    # Consumer 설정
+    consumer:
+      max-poll-records: 100
+      max-poll-interval-ms: 60000    # 1분
+      session-timeout-ms: 45000      # 45초
+      heartbeat-interval-ms: 15000   # 15초
+  
+  # 처리 설정
+  processing:
+    parallelism: 30                  # 병렬 처리 수
+  
+  # Tika 설정
+  tika:
+    max-text-length: 1000000         # 1MB
+    timeout-ms: 5000                 # 5초
+
+# 서버 설정
+server:
+  port: 8082
+
+# 로깅 설정
+logging:
+  level:
+    root: INFO
+    com.javacafe.rtwdataclean: DEBUG
+    org.springframework.kafka: INFO
+    org.springframework.data.mongodb: INFO
+    org.apache.tika: WARN
+
+# Actuator 설정
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
