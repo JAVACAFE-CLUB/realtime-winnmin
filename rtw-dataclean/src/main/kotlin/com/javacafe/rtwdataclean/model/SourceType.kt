@@ -13,19 +13,19 @@ enum class SourceType(
         textPath = listOf("htmlContent"),
         contentType = ContentType.HTML
     ),
-    
+
     WIKI(
-        topic = "wiki-items", 
+        topic = "wiki-items",
         textPath = listOf("revision", "text"),
-        contentType = ContentType.HTML
+        contentType = ContentType.WIKI_MARKUP  // Wiki 마크업
     ),
-    
+
     TWITTER(
         topic = "twitter-items",
         textPath = listOf("text"),
         contentType = ContentType.PLAIN_TEXT
     );
-    
+
     companion object {
         fun fromTopic(topic: String): SourceType {
             return values().find { it.topic == topic }
@@ -35,6 +35,7 @@ enum class SourceType(
 }
 
 enum class ContentType {
-    HTML,
-    PLAIN_TEXT
+    HTML,           // HTML 형식
+    WIKI_MARKUP,    // Wikipedia 마크업 형식
+    PLAIN_TEXT      // 일반 텍스트
 }
