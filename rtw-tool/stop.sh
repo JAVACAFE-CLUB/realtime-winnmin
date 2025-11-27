@@ -4,7 +4,7 @@ echo "🛑 Elasticsearch + Kibana + Kafka + MongoDB 서비스 중지"
 
 # 실행 중인 컨테이너 확인
 echo "🔍 현재 실행 중인 관련 컨테이너:"
-docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "(elasticsearch|kibana|kafka|mongodb|mongo-express|kafka-ui)"
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "(elasticsearch|kibana|kafka|mongodb|mongo-express|kafka-ui|prometheus|grafana|kafka-exporter)"
 
 echo ""
 
@@ -22,6 +22,9 @@ containers=$(docker ps -q \
     --filter "name=kibana" \
     --filter "name=kafka" \
     --filter "name=kafka-ui" \
+    --filter "name=kafka-exporter" \
+    --filter "name=prometheus" \
+    --filter "name=grafana" \
     --filter "name=mongodb" \
     --filter "name=mongo-express")
 
@@ -77,6 +80,22 @@ else
     echo "  ⚙️  MongoDB 설정: 볼륨 없음"
 fi
 
+# Prometheus 볼륨
+if docker volume inspect rtw-tool_prometheus_data >/dev/null 2>&1; then
+    prometheus_size=$(docker run --rm -v rtw-tool_prometheus_data:/data alpine du -sh /data 2>/dev/null | cut -f1 || echo "N/A")
+    echo "  📈 Prometheus 데이터: 존재함 (크기: $prometheus_size)"
+else
+    echo "  📈 Prometheus 데이터: 볼륨 없음"
+fi
+
+# Grafana 볼륨
+if docker volume inspect rtw-tool_grafana_data >/dev/null 2>&1; then
+    grafana_size=$(docker run --rm -v rtw-tool_grafana_data:/data alpine du -sh /data 2>/dev/null | cut -f1 || echo "N/A")
+    echo "  📊 Grafana 데이터: 존재함 (크기: $grafana_size)"
+else
+    echo "  📊 Grafana 데이터: 볼륨 없음"
+fi
+
 # Kafka 로컬 디렉토리
 if [ -d "/Users/usmin/kafka-data" ]; then
     kafka_size=$(du -sh /Users/usmin/kafka-data 2>/dev/null | cut -f1 || echo "N/A")
@@ -89,8 +108,8 @@ fi
 # 5. 포트 사용 확인
 echo ""
 echo "🔌 포트 사용 상태 확인:"
-ports=("9200" "9300" "5601" "9092" "9093" "8080" "27017" "8081")
-port_names=("Elasticsearch HTTP" "Elasticsearch Transport" "Kibana" "Kafka" "Kafka Controller" "Kafka UI" "MongoDB" "Mongo Express")
+ports=("9200" "9300" "5601" "9092" "9093" "9080" "27017" "9081" "9090" "3000" "9308")
+port_names=("Elasticsearch HTTP" "Elasticsearch Transport" "Kibana" "Kafka" "Kafka Controller" "Kafka UI" "MongoDB" "Mongo Express" "Prometheus" "Grafana" "Kafka Exporter")
 
 for i in "${!ports[@]}"; do
     port="${ports[$i]}"

@@ -67,6 +67,10 @@ create_kafka_topics() {
     docker exec kafka kafka-topics --bootstrap-server localhost:9092 --create --topic rss-items --partitions 10 --replication-factor 1 --if-not-exists
     docker exec kafka kafka-topics --bootstrap-server localhost:9092 --create --topic wiki-items --partitions 10 --replication-factor 1 --if-not-exists
 
+    docker exec kafka kafka-topics --bootstrap-server localhost:9092 --create --topic refined-twitter --partitions 10 --replication-factor 1 --if-not-exists
+    docker exec kafka kafka-topics --bootstrap-server localhost:9092 --create --topic refined-rss --partitions 10 --replication-factor 1 --if-not-exists
+    docker exec kafka kafka-topics --bootstrap-server localhost:9092 --create --topic refined-wiki --partitions 10 --replication-factor 1 --if-not-exists
+
     echo "✅ 기본 토픽 생성 완료"
 }
 
@@ -160,6 +164,27 @@ if ! check_mongodb_health; then
     exit 1
 fi
 
+# Prometheus 확인
+if ! check_service_health "Prometheus" "http://localhost:9090/-/healthy"; then
+    echo "⚠️ Prometheus 시작 실패 (계속 진행)"
+    echo "🔍 Prometheus 컨테이너 로그 확인:"
+    docker logs prometheus --tail 10
+fi
+
+# Grafana 확인
+if ! check_service_health "Grafana" "http://localhost:3000/api/health"; then
+    echo "⚠️ Grafana 시작 실패 (계속 진행)"
+    echo "🔍 Grafana 컨테이너 로그 확인:"
+    docker logs grafana --tail 10
+fi
+
+# Kafka Exporter 확인
+if ! check_service_health "Kafka Exporter" "http://localhost:9308/metrics"; then
+    echo "⚠️ Kafka Exporter 시작 실패 (계속 진행)"
+    echo "🔍 Kafka Exporter 컨테이너 로그 확인:"
+    docker logs kafka-exporter --tail 10
+fi
+
 # 4. Elasticsearch 상태 상세 확인
 echo ""
 echo "📊 Elasticsearch 클러스터 상태:"
@@ -227,14 +252,21 @@ echo "📊 서비스 접속 정보:"
 echo "  • Elasticsearch: http://localhost:9200"
 echo "  • Kibana: http://localhost:5601"
 echo "  • Kafka: localhost:9092"
-echo "  • Kafka UI: http://localhost:8080"
+echo "  • Kafka UI: http://localhost:9080"
 echo "  • MongoDB: mongodb://localhost:27017"
-echo "  • Mongo Express: http://localhost:8081 (admin/admin123)"
+echo "  • Mongo Express: http://localhost:9081 (admin/admin123)"
+echo "  • Grafana: http://localhost:3000 (admin/admin)"
+echo "  • Prometheus: http://localhost:9090"
+echo "  • Kafka Exporter: http://localhost:9308/metrics"
 echo ""
 echo "🔐 MongoDB 접속 정보:"
 echo "  • 관리자: admin / admin123"
 echo "  • 앱 사용자: rtw_app / rtw_password123"
 echo "  • 데이터베이스: realtime_winnmin"
+echo ""
+echo "📊 모니터링 정보:"
+echo "  • Kafka Lag 대시보드: http://localhost:3000/d/kafka-consumer-lag"
+echo "  • 상세 가이드: rtw-tool/MONITORING_GUIDE.md 참고"
 echo ""
 echo "🔧 유용한 명령어들:"
 echo ""
