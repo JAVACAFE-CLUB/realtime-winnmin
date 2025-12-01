@@ -56,7 +56,10 @@ services:
       - elastic
 
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    build:
+      context: ./elasticsearch
+      dockerfile: Dockerfile
+    image: rtw-elasticsearch:8.11.0-nori
     container_name: elasticsearch
     environment:
       - node.name=elasticsearch
@@ -110,6 +113,39 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+
+  # ===== Redis (키워드 캐싱) =====
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - elastic
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===== Redis Insight (Redis 관리 UI) - ARM64 지원 =====
+  redis-insight:
+    image: redis/redisinsight:latest
+    container_name: redis-insight
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "5540:5540"
+    volumes:
+      - redis_insight_data:/data
+    networks:
+      - elastic
 
   # ===== MongoDB =====
   mongodb:
@@ -231,6 +267,11 @@ volumes:
   elasticsearch_data:
     driver: local
   kibana_data:
+    driver: local
+  # ✅ Redis 볼륨
+  redis_data:
+    driver: local
+  redis_insight_data:
     driver: local
   # ✅ MongoDB 볼륨
   mongodb_data:

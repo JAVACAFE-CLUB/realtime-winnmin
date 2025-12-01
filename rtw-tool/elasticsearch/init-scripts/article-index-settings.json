@@ -1,0 +1,183 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 3,
+      "number_of_replicas": 1,
+      "refresh_interval": "5s",
+      "max_result_window": 50000
+    },
+    "analysis": {
+      "tokenizer": {
+        "nori_tokenizer_custom": {
+          "type": "nori_tokenizer",
+          "decompound_mode": "mixed",
+          "discard_punctuation": true,
+          "user_dictionary_rules": [
+            "삼성전자",
+            "네이버",
+            "카카오",
+            "인공지능",
+            "머신러닝",
+            "딥러닝",
+            "빅데이터",
+            "클라우드",
+            "블록체인",
+            "메타버스",
+            "챗봇",
+            "자율주행",
+            "스마트팩토리",
+            "핀테크",
+            "사물인터넷"
+          ]
+        }
+      },
+      "filter": {
+        "nori_posfilter_noun": {
+          "type": "nori_part_of_speech",
+          "stoptags": [
+            "E", "IC", "J", "MAG", "MAJ", "MM",
+            "SP", "SSC", "SSO", "SC", "SE",
+            "XPN", "XSA", "XSN", "XSV",
+            "UNA", "NA", "VSV",
+            "VV", "VA", "VX", "VCP", "VCN",
+            "SF", "SY", "NR"
+          ]
+        },
+        "nori_readingform": {
+          "type": "nori_readingform"
+        },
+        "korean_stop": {
+          "type": "stop",
+          "stopwords": [
+            "이", "그", "저", "것", "수", "등", "및",
+            "에서", "위해", "대해", "통해", "때문",
+            "이후", "이전", "경우", "따라", "위한",
+            "있는", "하는", "되는", "된다", "한다",
+            "있다", "없다", "같은", "또한", "하지만",
+            "그러나", "때문에", "그리고", "또는"
+          ]
+        },
+        "length_filter": {
+          "type": "length",
+          "min": 2,
+          "max": 20
+        },
+        "korean_synonym": {
+          "type": "synonym",
+          "synonyms": [
+            "AI, 인공지능, 에이아이",
+            "ML, 머신러닝, 기계학습",
+            "DL, 딥러닝, 심층학습",
+            "IoT, 사물인터넷, 아이오티"
+          ]
+        }
+      },
+      "analyzer": {
+        "korean_standard": {
+          "type": "custom",
+          "tokenizer": "nori_tokenizer_custom",
+          "filter": [
+            "lowercase",
+            "nori_readingform",
+            "nori_posfilter_noun",
+            "korean_stop",
+            "length_filter"
+          ]
+        },
+        "korean_noun_only": {
+          "type": "custom",
+          "tokenizer": "nori_tokenizer_custom",
+          "filter": [
+            "lowercase",
+            "nori_readingform",
+            "nori_posfilter_noun",
+            "korean_stop",
+            "length_filter"
+          ]
+        },
+        "korean_search": {
+          "type": "custom",
+          "tokenizer": "nori_tokenizer_custom",
+          "filter": [
+            "lowercase",
+            "nori_readingform",
+            "korean_synonym"
+          ]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "refinedId": {
+        "type": "keyword",
+        "doc_values": true
+      },
+      "originId": {
+        "type": "keyword"
+      },
+      "sourceType": {
+        "type": "keyword"
+      },
+      "title": {
+        "type": "text",
+        "analyzer": "korean_standard",
+        "search_analyzer": "korean_search",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          },
+          "raw": {
+            "type": "text",
+            "analyzer": "standard"
+          }
+        }
+      },
+      "fullText": {
+        "type": "text",
+        "analyzer": "korean_standard",
+        "search_analyzer": "korean_search",
+        "term_vector": "with_positions_offsets"
+      },
+      "author": {
+        "type": "keyword"
+      },
+      "source": {
+        "type": "keyword"
+      },
+      "category": {
+        "type": "keyword"
+      },
+      "url": {
+        "type": "keyword",
+        "index": false
+      },
+      "publishedAt": {
+        "type": "date",
+        "format": "yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd'T'HH:mm:ss.SSS||yyyy-MM-dd||epoch_millis"
+      },
+      "indexedAt": {
+        "type": "date",
+        "format": "yyyy-MM-dd'T'HH:mm:ss||epoch_millis"
+      },
+      "keywords": {
+        "type": "keyword"
+      },
+      "keywordScores": {
+        "type": "nested",
+        "properties": {
+          "word": { "type": "keyword" },
+          "count": { "type": "integer" },
+          "score": { "type": "float" }
+        }
+      },
+      "textLength": {
+        "type": "integer"
+      },
+      "wordCount": {
+        "type": "integer"
+      }
+    }
+  }
+}
