@@ -1,18 +1,68 @@
 server:
-  port: 8080
+  port: 8084
 
 spring:
   application:
-    name: rtw-serving
+    name: rtw-serve
     
-  # Elasticsearch 설정
+  # ===== Elasticsearch 설정 =====
   elasticsearch:
     uris: http://localhost:9200
-    connection-timeout: 10s
-    socket-timeout: 60s
+    connection-timeout: 5s
+    socket-timeout: 30s
 
-# 로깅 설정 (개발용)
+  # ===== Redis 설정 (캐시 조회) =====
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 10
+          max-idle: 5
+          min-idle: 2
+          max-wait: 2000ms
+
+  # ===== Cache 설정 =====
+  cache:
+    type: redis
+    redis:
+      time-to-live: 3600000  # 1시간 (밀리초)
+      cache-null-values: false
+
+# ===== 애플리케이션 설정 =====
+app:
+  elasticsearch:
+    article-index: rtw-articles
+    keyword-index: rtw-keywords
+  
+  search:
+    default-page-size: 20
+    max-page-size: 100
+    highlight-fragment-size: 150
+    
+  keyword:
+    cache-prefix: "rtw:keyword:daily:"
+    top-count: 10
+
+# ===== Actuator 설정 =====
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  health:
+    elasticsearch:
+      enabled: false
+    redis:
+      enabled: true
+
+# ===== 로깅 설정 =====
 logging:
   level:
-    com.javacafe: DEBUG
+    root: INFO
+    com.javacafe.rtwserve: DEBUG
     org.springframework.data.elasticsearch: INFO
+    org.springframework.data.redis: INFO
+    org.elasticsearch.client: WARN
