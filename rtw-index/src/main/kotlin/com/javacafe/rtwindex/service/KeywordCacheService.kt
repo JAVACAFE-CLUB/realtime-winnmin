@@ -17,11 +17,11 @@ private val logger = KotlinLogging.logger {}
 /**
  * 키워드 캐시 서비스
  * 
- * Redis를 사용하여 오늘의 키워드를 캐싱
+ * Redis를 사용하여 키워드를 캐싱
  * 
  * 캐시 구조:
- * - rtw:keyword:daily:{date} → Top 10 키워드 (JSON)
- * - rtw:keyword:hourly:{date}:{hour} → 시간별 Top 10
+ * - rtw:keyword:daily:{date} → 일별 Top 10 키워드 (TTL: 24시간)
+ * - rtw:keyword:hourly:{date}:{hour} → 시간별 Top 10 키워드 (TTL: 2시간)
  */
 @Service
 class KeywordCacheService(
@@ -39,6 +39,12 @@ class KeywordCacheService(
 
     private val topCount: Int
         get() = indexProperties.keyword.topCount
+
+    companion object {
+        private const val HOURLY_CACHE_TTL_SECONDS = 7200L  // 2시간
+    }
+
+    // ========== 일별 키워드 ==========
 
     /**
      * 오늘의 Top 키워드 조회 (캐시 우선)
@@ -68,38 +74,7 @@ class KeywordCacheService(
     }
 
     /**
-     * 시간별 Top 키워드 조회 (캐시 우선)
-     */
-    fun getHourlyTopKeywords(dateTime: LocalDateTime = LocalDateTime.now()): TopKeywordsResponse {
-        val date = dateTime.toLocalDate()
-        val hour = dateTime.hour
-        val cacheKey = "${cachePrefix}hourly:${date}:${hour}"
-        
-        // 1. 캐시에서 먼저 조회
-        val cached = getFromCacheByKey(cacheKey)
-        if (cached != null) {
-            logger.debug { "Cache hit for hourly keywords: $dateTime" }
-            return cached
-        }
-        
-        // 2. 캐시 미스 → ES에서 집계
-        logger.info { "Cache miss for hourly keywords: $dateTime, aggregating from ES..." }
-        val keywords = keywordAggregationService.aggregateHourlyKeywords(dateTime, topCount)
-        
-        val response = TopKeywordsResponse(
-            date = date,
-            keywords = keywords,
-            generatedAt = LocalDateTime.now()
-        )
-        
-        // 3. 캐시에 저장 (1시간 TTL)
-        putToCacheByKey(cacheKey, response, 3600)
-        
-        return response
-    }
-
-    /**
-     * 캐시 수동 갱신 (스케줄러에서 호출)
+     * 일별 키워드 캐시 갱신 (스케줄러에서 호출)
      * 
      * ES에서 집계 → ES 저장 → Redis 저장
      */
@@ -117,28 +92,123 @@ class KeywordCacheService(
         
         // 2. ES에 저장 (rtw-keywords 인덱스)
         val esSavedCount = keywordAggregationService.saveAggregatedKeywords(keywords)
-        logger.info { "📊 Saved $esSavedCount keywords to ES (rtw-keywords)" }
+        logger.info { "📊 Saved $esSavedCount daily keywords to ES (rtw-keywords)" }
         
         // 3. Redis에 저장
         val redisSaved = putToCache(date, response)
         if (redisSaved) {
-            logger.info { "✅ Cached ${keywords.size} keywords to Redis (key: ${cachePrefix}${date})" }
+            logger.info { "✅ Cached ${keywords.size} daily keywords to Redis (key: ${cachePrefix}${date})" }
         } else {
-            logger.error { "❌ Failed to cache keywords to Redis" }
+            logger.error { "❌ Failed to cache daily keywords to Redis" }
         }
         
         return response
     }
 
     /**
-     * Redis에 직접 저장
-     * 
-     * @return 저장 성공 여부
+     * 일별 캐시 저장
      */
     fun putToCache(date: LocalDate, response: TopKeywordsResponse): Boolean {
         val key = "${cachePrefix}${date}"
         return putToCacheByKey(key, response, cacheTtl)
     }
+
+    /**
+     * 일별 캐시 조회
+     */
+    fun getFromCache(date: LocalDate): TopKeywordsResponse? {
+        val key = "${cachePrefix}${date}"
+        return getFromCacheByKey(key)
+    }
+
+    /**
+     * 일별 캐시 삭제
+     */
+    fun evictCache(date: LocalDate) {
+        val key = "${cachePrefix}${date}"
+        evictCacheByKey(key)
+    }
+
+    // ========== 시간별 키워드 ==========
+
+    /**
+     * 시간별 Top 키워드 조회 (캐시 우선)
+     */
+    fun getHourlyTopKeywords(dateTime: LocalDateTime = LocalDateTime.now()): TopKeywordsResponse {
+        val cacheKey = buildHourlyCacheKey(dateTime)
+        
+        // 1. 캐시에서 먼저 조회
+        val cached = getFromCacheByKey(cacheKey)
+        if (cached != null) {
+            logger.debug { "Cache hit for hourly keywords: $dateTime" }
+            return cached
+        }
+        
+        // 2. 캐시 미스 → ES에서 집계
+        logger.info { "Cache miss for hourly keywords: $dateTime, aggregating from ES..." }
+        val keywords = keywordAggregationService.aggregateHourlyKeywords(dateTime, topCount)
+        
+        val response = TopKeywordsResponse(
+            date = dateTime.toLocalDate(),
+            keywords = keywords,
+            generatedAt = LocalDateTime.now()
+        )
+        
+        // 3. 캐시에 저장 (2시간 TTL)
+        putToCacheByKey(cacheKey, response, HOURLY_CACHE_TTL_SECONDS)
+        
+        return response
+    }
+
+    /**
+     * 시간별 키워드 캐시 갱신 (스케줄러에서 호출)
+     * 
+     * ES에서 집계 → ES 저장 → Redis 저장
+     */
+    fun refreshHourlyKeywords(dateTime: LocalDateTime = LocalDateTime.now()): TopKeywordsResponse {
+        val cacheKey = buildHourlyCacheKey(dateTime)
+        logger.info { "🔄 Refreshing hourly keywords for ${dateTime.toLocalDate()} ${dateTime.hour}:00..." }
+        
+        // 1. ES에서 집계
+        val keywords = keywordAggregationService.aggregateHourlyKeywords(dateTime, topCount)
+        
+        val response = TopKeywordsResponse(
+            date = dateTime.toLocalDate(),
+            keywords = keywords,
+            generatedAt = LocalDateTime.now()
+        )
+        
+        // 2. ES에 저장 (rtw-keywords 인덱스)
+        val esSavedCount = keywordAggregationService.saveAggregatedKeywords(keywords)
+        logger.info { "📊 Saved $esSavedCount hourly keywords to ES (rtw-keywords)" }
+        
+        // 3. Redis에 저장 (2시간 TTL)
+        val redisSaved = putToCacheByKey(cacheKey, response, HOURLY_CACHE_TTL_SECONDS)
+        if (redisSaved) {
+            logger.info { "✅ Cached ${keywords.size} hourly keywords to Redis (key: $cacheKey, ttl: ${HOURLY_CACHE_TTL_SECONDS}s)" }
+        } else {
+            logger.error { "❌ Failed to cache hourly keywords to Redis" }
+        }
+        
+        return response
+    }
+
+    /**
+     * 시간별 캐시 키 생성
+     */
+    private fun buildHourlyCacheKey(dateTime: LocalDateTime): String {
+        return "${cachePrefix}hourly:${dateTime.toLocalDate()}:${dateTime.hour}"
+    }
+
+    /**
+     * 시간별 캐시 삭제
+     */
+    fun evictHourlyCache(dateTime: LocalDateTime) {
+        val key = buildHourlyCacheKey(dateTime)
+        evictCacheByKey(key)
+    }
+
+    // ========== 공통 Redis 작업 ==========
 
     /**
      * 키를 지정하여 Redis에 저장
@@ -155,14 +225,6 @@ class KeywordCacheService(
     }
 
     /**
-     * Redis에서 직접 조회
-     */
-    fun getFromCache(date: LocalDate): TopKeywordsResponse? {
-        val key = "${cachePrefix}${date}"
-        return getFromCacheByKey(key)
-    }
-
-    /**
      * 키를 지정하여 Redis에서 조회
      */
     private fun getFromCacheByKey(key: String): TopKeywordsResponse? {
@@ -170,7 +232,6 @@ class KeywordCacheService(
             val value = redisTemplate.opsForValue().get(key)
             if (value != null) {
                 logger.debug { "Redis GET: key=$key, found=true" }
-                // ObjectMapper로 변환 (타입 안전성)
                 objectMapper.convertValue(value, TopKeywordsResponse::class.java)
             } else {
                 logger.debug { "Redis GET: key=$key, found=false" }
@@ -183,10 +244,9 @@ class KeywordCacheService(
     }
 
     /**
-     * 특정 날짜 캐시 삭제
+     * 키를 지정하여 캐시 삭제
      */
-    fun evictCache(date: LocalDate) {
-        val key = "${cachePrefix}${date}"
+    private fun evictCacheByKey(key: String) {
         try {
             val deleted = redisTemplate.delete(key)
             logger.info { "Redis DEL: key=$key, deleted=$deleted" }
@@ -221,15 +281,23 @@ class KeywordCacheService(
             val pattern = "${cachePrefix}*"
             val keys = redisTemplate.keys(pattern)
             
+            // 일별/시간별 분리
+            val dailyKeys = keys.filter { !it.contains("hourly") }
+            val hourlyKeys = keys.filter { it.contains("hourly") }
+            
             val status = mapOf(
                 "totalCachedKeys" to keys.size,
+                "dailyKeyCount" to dailyKeys.size,
+                "hourlyKeyCount" to hourlyKeys.size,
                 "cachePrefix" to cachePrefix,
-                "ttlSeconds" to cacheTtl,
-                "cachedKeys" to keys.sorted(),
+                "dailyTtlSeconds" to cacheTtl,
+                "hourlyTtlSeconds" to HOURLY_CACHE_TTL_SECONDS,
+                "dailyKeys" to dailyKeys.sorted(),
+                "hourlyKeys" to hourlyKeys.sorted(),
                 "redisConnected" to testRedisConnection()
             )
             
-            logger.info { "Cache status: ${keys.size} keys, prefix=$cachePrefix" }
+            logger.info { "Cache status: ${keys.size} total keys (daily: ${dailyKeys.size}, hourly: ${hourlyKeys.size})" }
             status
         } catch (e: Exception) {
             logger.error(e) { "Failed to get cache status" }

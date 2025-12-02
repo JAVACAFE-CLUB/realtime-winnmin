@@ -75,11 +75,11 @@ class KeywordController(
     /**
      * 특정 키워드 관련 문서 조회
      * 
-     * GET /api/v1/keywords/{keyword}/articles
+     * GET /api/v1/keywords/articles?keyword={keyword}
      */
-    @GetMapping("/{keyword}/articles")
+    @GetMapping("/articles")
     fun getArticlesByKeyword(
-        @PathVariable keyword: String,
+        @RequestParam keyword: String = "오늘",
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int
     ): ResponseEntity<ApiResponse<KeywordArticlesResponse>> {

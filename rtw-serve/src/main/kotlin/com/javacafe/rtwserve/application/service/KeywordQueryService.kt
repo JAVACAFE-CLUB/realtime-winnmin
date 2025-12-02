@@ -15,7 +15,6 @@ import org.springframework.data.redis.core.RedisTemplate
 import org.springframework.stereotype.Service
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 
 private val logger = KotlinLogging.logger {}
 
@@ -23,6 +22,10 @@ private val logger = KotlinLogging.logger {}
  * 키워드 조회 서비스
  * 
  * Redis 캐시와 Elasticsearch에서 키워드 데이터 조회
+ * 
+ * 캐시 키 구조 (rtw-index에서 저장):
+ * - rtw:keyword:daily:{date} → 일별 Top 10
+ * - rtw:keyword:hourly:{date}:{hour} → 시간별 Top 10
  */
 @Service
 class KeywordQueryService(
@@ -43,14 +46,16 @@ class KeywordQueryService(
     private val topCount: Int
         get() = serveProperties.keyword.topCount
 
+    // ========== 일별 키워드 ==========
+
     /**
      * 오늘의 키워드 조회 (캐시 우선)
      */
     fun getTodayKeywords(date: LocalDate = LocalDate.now()): TodayKeywordsResponse {
         // 1. Redis 캐시에서 조회
-        val cached = getFromCache(date)
+        val cached = getDailyCacheByDate(date)
         if (cached != null) {
-            logger.debug { "Cache hit for keywords: $date" }
+            logger.debug { "Cache hit for daily keywords: $date" }
             return TodayKeywordsResponse(
                 date = cached.date,
                 keywords = cached.keywords.map { it.toDto() },
@@ -60,8 +65,8 @@ class KeywordQueryService(
         }
 
         // 2. 캐시 미스 - ES에서 조회
-        logger.debug { "Cache miss for keywords: $date, fetching from ES" }
-        val keywords = getKeywordsFromEs(date)
+        logger.info { "Cache miss for daily keywords: $date, fetching from ES" }
+        val keywords = getDailyKeywordsFromEs(date)
         
         return TodayKeywordsResponse(
             date = date,
@@ -72,13 +77,84 @@ class KeywordQueryService(
     }
 
     /**
-     * 시간별 키워드 조회
+     * 일별 캐시 조회
+     */
+    private fun getDailyCacheByDate(date: LocalDate): TopKeywordsResponse? {
+        val key = "${cachePrefix}${date}"
+        return getFromCacheByKey(key)
+    }
+
+    /**
+     * ES에서 일별 키워드 조회
+     */
+    private fun getDailyKeywordsFromEs(date: LocalDate): List<DailyKeyword> {
+        return try {
+            val searchRequest = SearchRequest.Builder()
+                .index(keywordIndex)
+                .size(topCount)
+                .query { q ->
+                    q.bool { b ->
+                        b.filter { f -> f.term { t -> t.field("date").value(date.toString()) } }
+                        b.mustNot { mn -> mn.exists { e -> e.field("hour") } }  // 일별만
+                    }
+                }
+                .sort { s -> s.field { f -> f.field("rank").order(SortOrder.Asc) } }
+                .build()
+
+            val response = elasticsearchClient.search(searchRequest, DailyKeyword::class.java)
+            response.hits().hits().mapNotNull { it.source() }
+        } catch (e: Exception) {
+            logger.error(e) { "Failed to get daily keywords from ES: $date" }
+            emptyList()
+        }
+    }
+
+    // ========== 시간별 키워드 ==========
+
+    /**
+     * 시간별 키워드 조회 (캐시 우선)
      */
     fun getHourlyKeywords(dateTime: LocalDateTime = LocalDateTime.now()): TodayKeywordsResponse {
         val date = dateTime.toLocalDate()
         val hour = dateTime.hour
 
-        val keywords = try {
+        // 1. Redis 캐시에서 조회
+        val cached = getHourlyCacheByDateTime(dateTime)
+        if (cached != null) {
+            logger.debug { "Cache hit for hourly keywords: $date $hour:00" }
+            return TodayKeywordsResponse(
+                date = cached.date,
+                keywords = cached.keywords.map { it.toDto() },
+                generatedAt = cached.generatedAt,
+                cached = true
+            )
+        }
+
+        // 2. 캐시 미스 - ES에서 조회
+        logger.info { "Cache miss for hourly keywords: $date $hour:00, fetching from ES" }
+        val keywords = getHourlyKeywordsFromEs(date, hour)
+
+        return TodayKeywordsResponse(
+            date = date,
+            keywords = keywords.map { it.toDto() },
+            generatedAt = LocalDateTime.now(),
+            cached = false
+        )
+    }
+
+    /**
+     * 시간별 캐시 조회
+     */
+    private fun getHourlyCacheByDateTime(dateTime: LocalDateTime): TopKeywordsResponse? {
+        val key = "${cachePrefix}hourly:${dateTime.toLocalDate()}:${dateTime.hour}"
+        return getFromCacheByKey(key)
+    }
+
+    /**
+     * ES에서 시간별 키워드 조회
+     */
+    private fun getHourlyKeywordsFromEs(date: LocalDate, hour: Int): List<DailyKeyword> {
+        return try {
             val searchRequest = SearchRequest.Builder()
                 .index(keywordIndex)
                 .size(topCount)
@@ -94,17 +170,12 @@ class KeywordQueryService(
             val response = elasticsearchClient.search(searchRequest, DailyKeyword::class.java)
             response.hits().hits().mapNotNull { it.source() }
         } catch (e: Exception) {
-            logger.error(e) { "Failed to get hourly keywords" }
+            logger.error(e) { "Failed to get hourly keywords from ES: $date $hour:00" }
             emptyList()
         }
-
-        return TodayKeywordsResponse(
-            date = date,
-            keywords = keywords.map { it.toDto() },
-            generatedAt = LocalDateTime.now(),
-            cached = false
-        )
     }
+
+    // ========== 키워드 트렌드 ==========
 
     /**
      * 키워드 트렌드 조회 (최근 N일)
@@ -151,6 +222,8 @@ class KeywordQueryService(
             trend = trend
         )
     }
+
+    // ========== 키워드별 문서 ==========
 
     /**
      * 특정 키워드 관련 문서 조회
@@ -204,46 +277,24 @@ class KeywordQueryService(
         }
     }
 
+    // ========== 공통 ==========
+
     /**
-     * Redis 캐시에서 조회
+     * Redis 캐시에서 조회 (공통)
      */
-    private fun getFromCache(date: LocalDate): TopKeywordsResponse? {
-        val key = "${cachePrefix}${date}"
+    private fun getFromCacheByKey(key: String): TopKeywordsResponse? {
         return try {
             val value = redisTemplate.opsForValue().get(key)
             if (value != null) {
+                logger.debug { "Redis GET: key=$key, found=true" }
                 objectMapper.convertValue(value, TopKeywordsResponse::class.java)
             } else {
+                logger.debug { "Redis GET: key=$key, found=false" }
                 null
             }
         } catch (e: Exception) {
-            logger.warn(e) { "Failed to get from cache: $key" }
+            logger.warn(e) { "Redis GET failed: key=$key" }
             null
-        }
-    }
-
-    /**
-     * ES에서 키워드 조회
-     */
-    private fun getKeywordsFromEs(date: LocalDate): List<DailyKeyword> {
-        return try {
-            val searchRequest = SearchRequest.Builder()
-                .index(keywordIndex)
-                .size(topCount)
-                .query { q ->
-                    q.bool { b ->
-                        b.filter { f -> f.term { t -> t.field("date").value(date.toString()) } }
-                        b.mustNot { mn -> mn.exists { e -> e.field("hour") } }  // 일별만
-                    }
-                }
-                .sort { s -> s.field { f -> f.field("rank").order(SortOrder.Asc) } }
-                .build()
-
-            val response = elasticsearchClient.search(searchRequest, DailyKeyword::class.java)
-            response.hits().hits().mapNotNull { it.source() }
-        } catch (e: Exception) {
-            logger.error(e) { "Failed to get keywords from ES: $date" }
-            emptyList()
         }
     }
 
