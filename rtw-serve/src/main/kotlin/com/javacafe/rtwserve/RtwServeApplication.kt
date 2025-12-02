@@ -1,11 +1,13 @@
 package com.javacafe.rtwserve
 
 import org.springframework.boot.autoconfigure.SpringBootApplication
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan
 import org.springframework.boot.runApplication
 
 @SpringBootApplication
-class RtwServingApplication
+@ConfigurationPropertiesScan
+class RtwServeApplication
 
 fun main(args: Array<String>) {
-    runApplication<RtwServingApplication>(*args)
+    runApplication<RtwServeApplication>(*args)
 }

@@ -1,15 +1,8 @@
 #!/bin/bash
 
-echo "🚀 Elasticsearch + Kibana + Kafka + MongoDB + Nori 플러그인 설치 및 실행"
+echo "🚀 RTW 인프라 실행 (Elasticsearch + Kibana + Kafka + MongoDB + Redis)"
 
-# Nori 플러그인이 설치되어 있는지 확인하는 함수
-check_nori_plugin() {
-    if docker exec elasticsearch /usr/share/elasticsearch/bin/elasticsearch-plugin list 2>/dev/null | grep -q "analysis-nori"; then
-        return 0  # 설치됨
-    else
-        return 1  # 설치 안됨
-    fi
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # 서비스 상태 확인 함수
 check_service_health() {
@@ -50,6 +43,26 @@ check_mongodb_health() {
     done
 
     echo "❌ MongoDB 시작 실패 또는 시간 초과"
+    return 1
+}
+
+# Redis 상태 확인 함수
+check_redis_health() {
+    local max_attempts=10
+    local attempt=1
+
+    echo "🔍 Redis 상태 확인 중..."
+    while [ $attempt -le $max_attempts ]; do
+        if docker exec redis redis-cli ping 2>/dev/null | grep -q "PONG"; then
+            echo "✅ Redis 준비 완료!"
+            return 0
+        fi
+        echo "⏳ Redis 시작 대기 중... ($attempt/$max_attempts)"
+        sleep 3
+        ((attempt++))
+    done
+
+    echo "❌ Redis 시작 실패 또는 시간 초과"
     return 1
 }
 
@@ -107,15 +120,62 @@ setup_mongodb() {
     echo "✅ MongoDB 설정 완료"
 }
 
+# Elasticsearch 인덱스 초기화 함수
+setup_elasticsearch_indices() {
+    echo "📝 Elasticsearch 인덱스 설정 중..."
+
+    # rtw-articles 인덱스 존재 여부 확인
+    ARTICLE_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:9200/rtw-articles")
+    if [ "$ARTICLE_EXISTS" = "200" ]; then
+        echo "   ✅ rtw-articles 인덱스가 이미 존재합니다."
+    else
+        echo "   📦 rtw-articles 인덱스 생성 중..."
+        RESULT=$(curl -s -X PUT "http://localhost:9200/rtw-articles" \
+            -H "Content-Type: application/json" \
+            -d @"${SCRIPT_DIR}/elasticsearch/init-scripts/article-index-settings.json")
+        
+        if echo "$RESULT" | grep -q '"acknowledged":true'; then
+            echo "   ✅ rtw-articles 인덱스 생성 완료!"
+        else
+            echo "   ⚠️ rtw-articles 인덱스 생성 실패: $RESULT"
+        fi
+    fi
+
+    # rtw-keywords 인덱스 존재 여부 확인
+    KEYWORD_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:9200/rtw-keywords")
+    if [ "$KEYWORD_EXISTS" = "200" ]; then
+        echo "   ✅ rtw-keywords 인덱스가 이미 존재합니다."
+    else
+        echo "   📦 rtw-keywords 인덱스 생성 중..."
+        RESULT2=$(curl -s -X PUT "http://localhost:9200/rtw-keywords" \
+            -H "Content-Type: application/json" \
+            -d @"${SCRIPT_DIR}/elasticsearch/init-scripts/keyword-index-settings.json")
+        
+        if echo "$RESULT2" | grep -q '"acknowledged":true'; then
+            echo "   ✅ rtw-keywords 인덱스 생성 완료!"
+        else
+            echo "   ⚠️ rtw-keywords 인덱스 생성 실패: $RESULT2"
+        fi
+    fi
+
+    echo "✅ Elasticsearch 인덱스 설정 완료"
+}
+
 # 1. 기존 컨테이너 중지 (볼륨은 보존)
 echo "🛑 기존 컨테이너 중지 중..."
 docker-compose down
 
-# 2. 모든 서비스 실행
+# 2. Elasticsearch 커스텀 이미지 빌드 (Nori 플러그인 포함)
+echo ""
+echo "🔨 Elasticsearch 커스텀 이미지 빌드 중 (Nori 플러그인 포함)..."
+docker-compose build elasticsearch
+
+# 3. 모든 서비스 실행
+echo ""
 echo "🏃 모든 서비스 실행 중..."
 docker-compose up -d
 
-# 3. 서비스별 순차적 상태 확인
+# 4. 서비스별 순차적 상태 확인
 echo ""
 echo "⏰ 서비스 시작 대기 중..."
 
@@ -164,66 +224,61 @@ if ! check_mongodb_health; then
     exit 1
 fi
 
+# Redis 확인
+if ! check_redis_health; then
+    echo "⚠️ Redis 시작 실패 (계속 진행)"
+    echo "🔍 Redis 컨테이너 로그 확인:"
+    docker logs redis --tail 10
+fi
+
 # Prometheus 확인
 if ! check_service_health "Prometheus" "http://localhost:9090/-/healthy"; then
     echo "⚠️ Prometheus 시작 실패 (계속 진행)"
-    echo "🔍 Prometheus 컨테이너 로그 확인:"
-    docker logs prometheus --tail 10
 fi
 
 # Grafana 확인
 if ! check_service_health "Grafana" "http://localhost:3000/api/health"; then
     echo "⚠️ Grafana 시작 실패 (계속 진행)"
-    echo "🔍 Grafana 컨테이너 로그 확인:"
-    docker logs grafana --tail 10
 fi
 
 # Kafka Exporter 확인
 if ! check_service_health "Kafka Exporter" "http://localhost:9308/metrics"; then
     echo "⚠️ Kafka Exporter 시작 실패 (계속 진행)"
-    echo "🔍 Kafka Exporter 컨테이너 로그 확인:"
-    docker logs kafka-exporter --tail 10
 fi
 
-# 4. Elasticsearch 상태 상세 확인
+# 5. Elasticsearch 상태 상세 확인
 echo ""
 echo "📊 Elasticsearch 클러스터 상태:"
 curl -s http://localhost:9200/_cluster/health?pretty
 
-# 5. Nori 플러그인 설치 여부 확인
+# 6. Nori 플러그인 확인
 echo ""
-echo "🔍 Nori 플러그인 설치 상태 확인 중..."
-if check_nori_plugin; then
-    echo "✅ Nori 플러그인이 이미 설치되어 있습니다."
+echo "🔍 Nori 플러그인 확인..."
+PLUGINS=$(curl -s "http://localhost:9200/_cat/plugins?format=json")
+if echo "$PLUGINS" | grep -q "analysis-nori"; then
+    echo "✅ analysis-nori 플러그인이 설치되어 있습니다."
 else
-    echo "📦 Nori 플러그인 설치 중..."
-    docker exec elasticsearch /usr/share/elasticsearch/bin/elasticsearch-plugin install analysis-nori --batch
-
-    echo "🔄 Elasticsearch 재시작 중..."
-    docker restart elasticsearch
-
-    echo "⏳ 재시작 대기 중..."
-    if ! check_service_health "Elasticsearch (재시작 후)" "http://localhost:9200/_cluster/health"; then
-        echo "❌ Elasticsearch 재시작 실패"
-        exit 1
-    fi
+    echo "❌ analysis-nori 플러그인이 설치되어 있지 않습니다!"
+    echo "   Dockerfile을 확인하고 'docker-compose build elasticsearch'를 실행하세요."
 fi
 
-# 6. Kafka 토픽 생성
+# 7. Kafka 토픽 생성
 echo ""
 create_kafka_topics
 
-# 7. MongoDB 초기 설정
+# 8. MongoDB 초기 설정
 echo ""
 setup_mongodb
 
-# 8. 최종 상태 확인
+# 9. Elasticsearch 인덱스 초기화
 echo ""
-echo "🔍 최종 상태 확인:"
+setup_elasticsearch_indices
 
-# 설치된 플러그인 확인
-echo "📋 설치된 Elasticsearch 플러그인:"
-curl -s http://localhost:9200/_nodes/plugins?pretty | grep -A3 -B1 nori || echo "플러그인 확인 실패"
+# 10. 최종 상태 확인
+echo ""
+echo "============================================"
+echo "📊 최종 상태 확인"
+echo "============================================"
 
 # Kafka 토픽 목록 확인
 echo ""
@@ -235,10 +290,15 @@ echo ""
 echo "📋 MongoDB 컬렉션 목록:"
 docker exec mongodb mongosh --eval "db.getSiblingDB('realtime_winnmin').getCollectionNames()" --quiet
 
-# MongoDB 인덱스 확인
+# Elasticsearch 인덱스 확인
 echo ""
-echo "📋 MongoDB origin_data 인덱스:"
-docker exec mongodb mongosh --eval "db.getSiblingDB('realtime_winnmin').origin_data.getIndexes()" --quiet
+echo "📋 Elasticsearch 인덱스:"
+curl -s "http://localhost:9200/_cat/indices?v&index=rtw-*"
+
+# Redis 확인
+echo ""
+echo "📋 Redis 상태:"
+docker exec redis redis-cli INFO server | grep -E "(redis_version|uptime_in_seconds)"
 
 # 실행 중인 컨테이너 확인
 echo ""
@@ -248,41 +308,30 @@ docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 echo ""
 echo "🎉 모든 서비스 설정 완료!"
 echo ""
-echo "📊 서비스 접속 정보:"
+echo "============================================"
+echo "📊 서비스 접속 정보"
+echo "============================================"
 echo "  • Elasticsearch: http://localhost:9200"
 echo "  • Kibana: http://localhost:5601"
 echo "  • Kafka: localhost:9092"
 echo "  • Kafka UI: http://localhost:9080"
 echo "  • MongoDB: mongodb://localhost:27017"
 echo "  • Mongo Express: http://localhost:9081 (admin/admin123)"
+echo "  • Redis: localhost:6379"
+echo "  • Redis Insight: http://localhost:5540"
 echo "  • Grafana: http://localhost:3000 (admin/admin)"
 echo "  • Prometheus: http://localhost:9090"
-echo "  • Kafka Exporter: http://localhost:9308/metrics"
 echo ""
 echo "🔐 MongoDB 접속 정보:"
 echo "  • 관리자: admin / admin123"
 echo "  • 앱 사용자: rtw_app / rtw_password123"
 echo "  • 데이터베이스: realtime_winnmin"
 echo ""
-echo "📊 모니터링 정보:"
-echo "  • Kafka Lag 대시보드: http://localhost:3000/d/kafka-consumer-lag"
-echo "  • 상세 가이드: rtw-tool/MONITORING_GUIDE.md 참고"
+echo "🔧 Elasticsearch 인덱스:"
+echo "  • rtw-articles: 문서 색인용 (Nori 형태소 분석기)"
+echo "  • rtw-keywords: 키워드 통계용"
 echo ""
-echo "🔧 유용한 명령어들:"
-echo ""
-echo "  [Kafka]"
-echo "  • 토픽 목록: docker exec kafka kafka-topics --bootstrap-server localhost:9092 --list"
-echo "  • 메시지 전송: docker exec kafka kafka-console-producer --bootstrap-server localhost:9092 --topic logs"
-echo "  • 메시지 수신: docker exec kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic logs --from-beginning"
-echo ""
-echo "  [MongoDB]"
-echo "  • MongoDB Shell 접속: docker exec -it mongodb mongosh -u admin -p admin123"
-echo "  • 앱 DB 접속: docker exec -it mongodb mongosh -u rtw_app -p rtw_password123 realtime_winnmin"
-echo "  • 데이터 조회: docker exec mongodb mongosh --eval 'db.getSiblingDB(\"realtime_winnmin\").origin_data.find().limit(5)' --quiet"
-echo "  • 데이터 개수: docker exec mongodb mongosh --eval 'db.getSiblingDB(\"realtime_winnmin\").origin_data.countDocuments()' --quiet"
-echo ""
-echo "  [Elasticsearch]"
-echo "  • 인덱스 목록: curl http://localhost:9200/_cat/indices?v"
-echo "  • 클러스터 상태: curl http://localhost:9200/_cluster/health?pretty"
-echo ""
-echo "💡 팁: 데이터를 완전히 초기화하려면 './reset.sh'를 실행하세요."
+echo "💡 팁:"
+echo "  • 데이터를 완전히 초기화하려면 './reset.sh'를 실행하세요."
+echo "  • ES 인덱스만 리셋하려면 './elasticsearch/init-scripts/reset-indices.sh'를 실행하세요."
+echo "  • 형태소 분석 테스트: './elasticsearch/init-scripts/init-indices.sh' 실행 후 확인"

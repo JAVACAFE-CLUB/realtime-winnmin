@@ -1,36 +1,35 @@
 plugins {
-	kotlin("plugin.spring")
-	id("org.springframework.boot")
+    kotlin("plugin.spring")
+    id("org.springframework.boot")
+    id("io.spring.dependency-management")
 }
 
+// Elasticsearch 버전 통일 (Spring Boot 3.2.x와 호환)
+val elasticsearchVersion = "8.11.4"
+
 dependencies {
-// 🌐 웹 프레임워크 (Reactive)
-	implementation("org.springframework.boot:spring-boot-starter-webflux")
+    // ===== rtw-core 의존성 (MongoDB, Kafka, Jackson 등 포함) =====
+    implementation(project(":rtw-core"))
 
-	// 📨 메시징 시스템
-	implementation("org.springframework.kafka:spring-kafka")
+    // ===== Elasticsearch =====
+    implementation("org.springframework.boot:spring-boot-starter-data-elasticsearch")
+    // ES Java Client 명시적 버전 지정 (Spring Boot BOM 버전과 일치)
+    implementation("co.elastic.clients:elasticsearch-java:$elasticsearchVersion")
+    implementation("jakarta.json:jakarta.json-api:2.1.3")
+    
+    // ===== Redis (키워드 캐싱) =====
+    implementation("org.springframework.boot:spring-boot-starter-data-redis")
+    implementation("org.springframework.boot:spring-boot-starter-cache")
 
-	// 🔧 JSON 처리
-	implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
+    // ===== Reactive 지원 =====
+    implementation("org.springframework.boot:spring-boot-starter-webflux")
+    implementation("io.projectreactor.kotlin:reactor-kotlin-extensions")
 
-	// ⚡ 코틀린 & 리액티브 지원
-	implementation("org.jetbrains.kotlin:kotlin-reflect")
-	implementation("io.projectreactor.kotlin:reactor-kotlin-extensions")
-	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactor")
-
-	// 🧪 테스트 프레임워크
-	testImplementation("org.springframework.boot:spring-boot-starter-test")
-	testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
-	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-
-	// 🧪 리액티브 테스트
-	testImplementation("io.projectreactor:reactor-test")
-	testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test")
-
-	// 🧪 Kafka 테스트
-	testImplementation("org.springframework.kafka:spring-kafka-test")
-
-	// ⚙️ 개발 도구
-	developmentOnly("org.springframework.boot:spring-boot-devtools")
-	annotationProcessor("org.springframework.boot:spring-boot-configuration-processor")
+    // ===== 테스트 =====
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.kafka:spring-kafka-test")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test")
+    testImplementation("io.projectreactor:reactor-test")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }

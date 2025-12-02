@@ -1,0 +1,67 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "refresh_interval": "10s"
+    }
+  },
+  "mappings": {
+    "properties": {
+      "date": {
+        "type": "date",
+        "format": "yyyy-MM-dd"
+      },
+      "hour": {
+        "type": "integer"
+      },
+      "keyword": {
+        "type": "keyword"
+      },
+      "frequency": {
+        "type": "long"
+      },
+      "documentCount": {
+        "type": "integer"
+      },
+      "score": {
+        "type": "float"
+      },
+      "rank": {
+        "type": "integer"
+      },
+      "sourceBreakdown": {
+        "type": "object",
+        "properties": {
+          "rss": { "type": "integer" },
+          "wiki": { "type": "integer" },
+          "twitter": { "type": "integer" }
+        }
+      },
+      "hourlyTrend": {
+        "type": "nested",
+        "properties": {
+          "hour": { "type": "integer" },
+          "count": { "type": "integer" }
+        }
+      },
+      "previousRank": {
+        "type": "integer"
+      },
+      "rankChange": {
+        "type": "integer"
+      },
+      "isNew": {
+        "type": "boolean"
+      },
+      "createdAt": {
+        "type": "date",
+        "format": "yyyy-MM-dd'T'HH:mm:ss||epoch_millis"
+      },
+      "updatedAt": {
+        "type": "date",
+        "format": "yyyy-MM-dd'T'HH:mm:ss||epoch_millis"
+      }
+    }
+  }
+}

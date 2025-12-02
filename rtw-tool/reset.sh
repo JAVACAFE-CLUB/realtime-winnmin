@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🗑️  Elasticsearch + Kibana + Kafka + MongoDB 데이터 완전 초기화"
+echo "🗑️  전체 인프라 데이터 완전 초기화"
 echo "⚠️  주의: 모든 저장된 데이터가 삭제됩니다!"
 echo ""
 echo "삭제될 데이터:"
@@ -8,6 +8,9 @@ echo "  📊 Elasticsearch 인덱스 및 설정"
 echo "  📈 Kibana 대시보드 및 설정"
 echo "  📝 Kafka 토픽 및 메시지"
 echo "  🗄️  MongoDB 컬렉션 및 문서"
+echo "  🔴 Redis 키워드 캐시 데이터"
+echo "  📉 Prometheus 메트릭 데이터"
+echo "  📊 Grafana 대시보드 설정"
 echo "  💾 모든 Docker 볼륨"
 echo "  📁 로컬 Kafka 데이터 (/Users/usmin/kafka-data)"
 echo ""
@@ -19,7 +22,29 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo ""
     echo "🛑 모든 서비스 중지 및 데이터 삭제 중..."
 
+    # 0. 실행 중인 서비스의 데이터 먼저 삭제 (선택적)
+    echo ""
+    echo "🔄 실행 중인 서비스 데이터 정리..."
+    
+    # Redis 데이터 삭제 (컨테이너가 실행 중인 경우)
+    if docker ps --format '{{.Names}}' | grep -q '^redis$'; then
+        echo "  🔴 Redis 데이터 삭제 중..."
+        docker exec redis redis-cli FLUSHALL 2>/dev/null && \
+            echo "  ✅ Redis 데이터 삭제 완료" || \
+            echo "  ℹ️  Redis 데이터 삭제 건너뜀"
+    fi
+
+    # Elasticsearch 인덱스 삭제 (컨테이너가 실행 중인 경우)
+    if docker ps --format '{{.Names}}' | grep -q '^elasticsearch$'; then
+        echo "  📊 Elasticsearch 인덱스 삭제 중..."
+        # rtw- 프리픽스가 붙은 인덱스 삭제
+        curl -s -X DELETE "http://localhost:9200/rtw-*" 2>/dev/null && \
+            echo "  ✅ Elasticsearch rtw-* 인덱스 삭제 완료" || \
+            echo "  ℹ️  Elasticsearch 인덱스 삭제 건너뜀"
+    fi
+
     # 1. 컨테이너 중지 및 볼륨까지 모두 삭제
+    echo ""
     echo "🏃 Docker Compose 서비스 및 볼륨 삭제..."
     docker-compose down -v
 
@@ -29,18 +54,27 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
 
     # rtw-tool 프리픽스가 붙은 볼륨들
     volumes=(
+        # Elasticsearch & Kibana
         "rtw-tool_elasticsearch_data"
         "rtw-tool_kibana_data"
-        "rtw-tool_mongodb_data"
-        "rtw-tool_mongodb_config"
-        "rtw-tool_prometheus_data"
-        "rtw-tool_grafana_data"
         "elasticsearch_data"
         "kibana_data"
+        # MongoDB
+        "rtw-tool_mongodb_data"
+        "rtw-tool_mongodb_config"
         "mongodb_data"
         "mongodb_config"
+        # Redis
+        "rtw-tool_redis_data"
+        "rtw-tool_redis_insight_data"
+        "redis_data"
+        "redis_insight_data"
+        # Monitoring
+        "rtw-tool_prometheus_data"
+        "rtw-tool_grafana_data"
         "prometheus_data"
         "grafana_data"
+        # Kafka
         "kafka_data"
     )
 
@@ -104,8 +138,13 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         --filter "name=kibana" \
         --filter "name=kafka" \
         --filter "name=kafka-ui" \
+        --filter "name=kafka-exporter" \
         --filter "name=mongodb" \
-        --filter "name=mongo-express")
+        --filter "name=mongo-express" \
+        --filter "name=redis" \
+        --filter "name=redis-insight" \
+        --filter "name=prometheus" \
+        --filter "name=grafana")
 
     if [ ! -z "$containers" ]; then
         echo "  🗑️  남은 컨테이너 강제 제거..."
@@ -134,7 +173,7 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo "🗑️  관련 Docker 이미지 삭제 중..."
         images=$(docker images --format "{{.Repository}}:{{.Tag}}" | \
-            grep -E "(elasticsearch|kibana|kafka|kafka-ui|mongo|mongo-express)")
+            grep -E "(elasticsearch|kibana|kafka|kafka-ui|mongo|mongo-express|redis|prometheus|grafana)")
 
         if [ ! -z "$images" ]; then
             echo "$images" | while read image; do
@@ -155,7 +194,7 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
 
     # 볼륨 확인
     echo "📦 볼륨 상태:"
-    remaining_volumes=$(docker volume ls -q | grep -E "(elasticsearch|kibana|kafka|mongodb|rtw-tool)")
+    remaining_volumes=$(docker volume ls -q | grep -E "(elasticsearch|kibana|kafka|mongodb|redis|prometheus|grafana|rtw-tool)")
     if [ -z "$remaining_volumes" ]; then
         echo "  ✅ 모든 데이터 볼륨 제거됨"
     else
@@ -172,7 +211,10 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         --filter "name=elasticsearch" \
         --filter "name=kibana" \
         --filter "name=kafka" \
-        --filter "name=mongodb")
+        --filter "name=mongodb" \
+        --filter "name=redis" \
+        --filter "name=prometheus" \
+        --filter "name=grafana")
     if [ -z "$remaining_containers" ]; then
         echo "  ✅ 모든 관련 컨테이너 제거됨"
     else
@@ -214,15 +256,19 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo "  2. Nori 플러그인이 자동으로 재설치됩니다"
     echo "  3. Kafka 기본 토픽들이 자동으로 생성됩니다"
     echo "  4. MongoDB 컬렉션 및 인덱스가 자동으로 생성됩니다"
+    echo "  5. Redis는 빈 상태로 시작됩니다"
     echo ""
     echo "💡 참고:"
-    echo "  • 모든 인덱스, 대시보드, 메시지, 컬렉션이 초기화되었습니다"
+    echo "  • 모든 인덱스, 대시보드, 메시지, 컬렉션, 캐시가 초기화되었습니다"
     echo "  • Kafka는 KRaft 모드로 실행됩니다 (Zookeeper 불필요)"
     echo "  • MongoDB는 realtime_winnmin 데이터베이스로 초기화됩니다"
+    echo "  • Redis 키워드 캐시는 애플리케이션 실행 시 자동 생성됩니다"
     echo "  • 설정 파일들은 보존됩니다:"
     echo "    - ./elasticsearch/config/"
     echo "    - ./kibana/config/"
     echo "    - ./mongodb/init-scripts/"
+    echo "    - ./prometheus/prometheus.yml"
+    echo "    - ./grafana/provisioning/"
     echo ""
     echo "🔧 서비스 접속 정보:"
     echo "  • Elasticsearch: http://localhost:9200"
@@ -231,6 +277,10 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo "  • Kafka UI: http://localhost:9080"
     echo "  • MongoDB: mongodb://localhost:27017"
     echo "  • Mongo Express: http://localhost:9081 (admin/admin123)"
+    echo "  • Redis: localhost:6379"
+    echo "  • Redis Insight: http://localhost:5540"
+    echo "  • Prometheus: http://localhost:9090"
+    echo "  • Grafana: http://localhost:3000 (admin/admin)"
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
@@ -243,9 +293,13 @@ else
     echo "  • 특정 볼륨만 삭제: docker volume rm <볼륨명>"
     echo "  • 사용하지 않는 볼륨 정리: docker volume prune"
     echo "  • Kafka 데이터만 삭제: sudo rm -rf /Users/usmin/kafka-data/*"
+    echo "  • Redis 데이터만 삭제: docker exec redis redis-cli FLUSHALL"
+    echo "  • ES 인덱스만 삭제: curl -X DELETE 'http://localhost:9200/rtw-*'"
     echo ""
     echo "🔍 현재 상태 확인:"
     echo "  • 볼륨 목록: docker volume ls | grep rtw-tool"
     echo "  • 실행 중인 컨테이너: docker ps"
     echo "  • Kafka 데이터 크기: du -sh /Users/usmin/kafka-data"
+    echo "  • Redis 키 개수: docker exec redis redis-cli DBSIZE"
+    echo "  • ES 인덱스 목록: curl 'http://localhost:9200/_cat/indices?v'"
 fi
