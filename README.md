@@ -15,6 +15,9 @@
  (raw-*)          (full_text)        + Redis Cache
 ```
 
+<img width="2048" height="743" alt="image" src="https://github.com/user-attachments/assets/2710e7dc-5552-4b03-8ab6-2a72c617ca51" />
+
+
 ## 🔄 데이터 처리 흐름 예시
 
 "삼성전자, AI 반도체 신제품 발표" 라는 뉴스가 수집되었을 때:
